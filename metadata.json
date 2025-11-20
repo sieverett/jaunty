@@ -1,0 +1,5 @@
+{
+  "name": "Jaunty",
+  "description": "An intelligent revenue forecasting platform for travel companies. Upload your historical data, visualize trends, and simulate future scenarios using Gemini AI.",
+  "requestFramePermissions": []
+}
