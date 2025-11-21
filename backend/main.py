@@ -12,7 +12,7 @@ import numpy as np
 from typing import Optional, List, Dict, Literal
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import io
@@ -750,9 +750,149 @@ async def startup_event():
         pipeline = None
 
 
-@app.get("/", response_model=dict)
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint"""
+    """Root endpoint - HTML landing page"""
+    endpoints = {
+        "health": "/health",
+        "upload": "/upload",
+        "forecast": "/forecast",
+        "dashboard/forecast": "/dashboard/forecast",
+        "train": "/train",
+        "docs": "/docs"
+    }
+    
+    # Add report endpoint if available
+    if REPORT_GENERATOR_AVAILABLE:
+        endpoints["report"] = "/report"
+    else:
+        endpoints["report"] = "/report (not available - Azure OpenAI not configured)"
+    
+    # Generate HTML page
+    endpoints_html = "\n".join([
+        f'        <li><a href="{path}" target="_blank">{name}</a></li>'
+        for name, path in endpoints.items()
+    ])
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Jaunty Revenue Forecasting API</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }}
+            .container {{
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                max-width: 600px;
+                width: 100%;
+                padding: 40px;
+            }}
+            h1 {{
+                color: #333;
+                margin-bottom: 10px;
+                font-size: 2em;
+            }}
+            .version {{
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 0.9em;
+            }}
+            .message {{
+                color: #555;
+                margin-bottom: 30px;
+                line-height: 1.6;
+            }}
+            h2 {{
+                color: #333;
+                margin-bottom: 15px;
+                font-size: 1.3em;
+            }}
+            ul {{
+                list-style: none;
+                margin-bottom: 30px;
+            }}
+            li {{
+                margin-bottom: 10px;
+            }}
+            a {{
+                color: #667eea;
+                text-decoration: none;
+                font-weight: 500;
+                transition: color 0.2s;
+            }}
+            a:hover {{
+                color: #764ba2;
+                text-decoration: underline;
+            }}
+            .docs-link {{
+                display: inline-block;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 6px;
+                text-decoration: none;
+                font-weight: 600;
+                margin-top: 20px;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }}
+            .docs-link:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+                text-decoration: none;
+            }}
+            .status {{
+                display: inline-block;
+                background: #10b981;
+                color: white;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 0.85em;
+                font-weight: 600;
+                margin-bottom: 20px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <span class="status">✓ API Online</span>
+            <h1>Jaunty Revenue Forecasting API</h1>
+            <p class="version">Version 1.0.0</p>
+            <p class="message">
+                Welcome to the Revenue Forecasting API. This service provides endpoints for generating 
+                12-month revenue forecasts from historical booking data using machine learning models.
+            </p>
+            <h2>Available Endpoints</h2>
+            <ul>
+{endpoints_html}
+            </ul>
+            <a href="/docs" class="docs-link">📚 View Interactive API Documentation</a>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html_content)
+
+@app.get("/api", response_model=dict)
+async def root_api():
+    """Root endpoint - JSON API response"""
     endpoints = {
         "health": "/health",
         "upload": "/upload",
