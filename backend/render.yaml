@@ -4,10 +4,8 @@ services:
     runtime: python
     plan: free  # or starter/standard for production
     # Note: Root directory should be set to jaunty/backend in Render dashboard
-    # Build command installs backend and model dependencies
-    buildCommand: |
-      pip install -r requirements.txt
-      pip install -r ../../model/requirements.txt
+    # Build command - all dependencies consolidated in requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION

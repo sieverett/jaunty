@@ -20,9 +20,10 @@ This guide covers deploying the FastAPI backend to various platforms. Netlify is
 2. **Create a new Web Service:**
    - Connect your GitHub repository
    - Select the `jaunty/backend` directory as the root directory
-   - Build Command: `pip install -r requirements.txt && pip install -r ../../model/requirements.txt`
+   - Build Command: `pip install -r requirements.txt`
    - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
    - Python Version: `3.11.0`
+   - **Note:** All dependencies (backend + model + report) are consolidated in `requirements.txt`
 
 3. **Environment Variables** (add in Render dashboard):
    ```
@@ -196,7 +197,7 @@ JAUNTY/
    - **Name**: `jaunty-backend`
    - **Root Directory**: `jaunty/backend`
    - **Environment**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt && pip install -r ../../model/requirements.txt`
+   - **Build Command**: `pip install -r requirements.txt` (all dependencies consolidated)
    - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 6. Add environment variables
 7. Click "Create Web Service"

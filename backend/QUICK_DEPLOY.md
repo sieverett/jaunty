@@ -13,8 +13,9 @@
    - **Environment**: `Python 3`
    - **Build Command**: 
      ```bash
-     pip install -r requirements.txt && pip install -r ../../model/requirements.txt
+     pip install -r requirements.txt
      ```
+     (All dependencies are now consolidated in a single requirements.txt file)
    - **Start Command**: 
      ```bash
      uvicorn main:app --host 0.0.0.0 --port $PORT
