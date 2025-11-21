@@ -961,7 +961,8 @@ async def get_dashboard_forecast(
             # After forecast, data should be loaded - get monthly revenue
             if pipeline.monthly_revenue is None or pipeline.monthly_revenue.empty:
                 # If monthly_revenue wasn't set by forecast, prepare it now
-                monthly_revenue = pipeline.data_loader.prepare_monthly_revenue()
+                # Pass forecast_date to exclude incomplete months
+                monthly_revenue = pipeline.data_loader.prepare_monthly_revenue(forecast_date=forecast_date)
             else:
                 monthly_revenue = pipeline.monthly_revenue
             

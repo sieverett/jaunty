@@ -48,7 +48,9 @@ FastAPI service that provides REST endpoints for:
 - Generates insights from dataset statistics
 - Extracts key revenue drivers
 - Provides suggested parameters for scenario simulation
-- Optionally includes funnel data
+- Includes funnel data for active pipeline stages (inquiry → quote_sent → booked → final_payment)
+  - Excludes historical `completed` leads (not current pipeline state)
+  - Conversion rates show percentage from previous stage to current stage
 
 **See [backend/README.md](backend/README.md) for details.**
 

@@ -238,14 +238,40 @@ curl -X POST "http://localhost:8000/dashboard/forecast" \
   "funnel": [
     {
       "stage": "inquiry",
-      "count": 1000,
-      "conversionRate": 65.0,
-      "dropOffRate": 35.0,
-      "revenuePotential": 4500000.0,
+      "count": 57,
+      "conversionRate": null,
+      "dropOffRate": null,
+      "revenuePotential": 314000.0,
       "avgDaysInStage": 2.5,
       "color": "#0ea5e9"
     },
-    ...
+    {
+      "stage": "quote_sent",
+      "count": 40,
+      "conversionRate": 70.2,
+      "dropOffRate": 29.8,
+      "revenuePotential": 213000.0,
+      "avgDaysInStage": 5.2,
+      "color": "#3b82f6"
+    },
+    {
+      "stage": "booked",
+      "count": 22,
+      "conversionRate": 55.0,
+      "dropOffRate": 45.0,
+      "revenuePotential": 116000.0,
+      "avgDaysInStage": 12.3,
+      "color": "#8b5cf6"
+    },
+    {
+      "stage": "final_payment",
+      "count": 6,
+      "conversionRate": 27.3,
+      "dropOffRate": 72.7,
+      "revenuePotential": 36000.0,
+      "avgDaysInStage": 8.5,
+      "color": "#10b981"
+    }
   ]
 }
 ```
@@ -256,7 +282,15 @@ curl -X POST "http://localhost:8000/dashboard/forecast" \
 - Generates insights from dataset statistics and metrics
 - Extracts key drivers from lead sources, destinations, and conversion rates
 - Provides suggested parameters for scenario simulation
-- Optionally includes funnel data based on `current_stage` distribution
+- Includes funnel data for **active pipeline stages only** (excludes historical `completed` leads)
+- **Incomplete Month Exclusion**: Automatically excludes incomplete recent months from historical data to prevent abrupt forecast jumps (see Data Processing section below)
+
+**Funnel Data:**
+- Only includes active pipeline stages: `inquiry`, `quote_sent`, `booked`, `final_payment`
+- Excludes `completed` (historical data, not current pipeline state)
+- Conversion rates show percentage from previous stage to current stage
+- Ordered from top (most leads) to bottom (fewest leads)
+- Proper funnel visualization: Inquiry → Quote Sent → Booked → Final Payment
 
 **Use Case:**
 This endpoint is designed specifically for frontend consumption. The frontend `dataService.ts` calls this endpoint when `VITE_API_URL` is configured and `VITE_USE_MOCK_DATA=false`.
@@ -397,6 +431,39 @@ The CSV file must match the format of `data/test_data.csv` (or `data/data_templa
 - Leave date fields empty (empty string) if that stage hasn't occurred yet
 - Minimum 1 year of historical data required
 - CSV can include comment lines starting with `#` (they are automatically ignored)
+
+## Data Processing
+
+### Incomplete Month Exclusion
+
+The API automatically excludes incomplete recent months from historical data during forecast generation to prevent abrupt forecast jumps. This ensures forecasts start from a representative baseline rather than artificially low recent data.
+
+**How it works:**
+- During inference, the system checks the last N months (default: 2, checks up to 4) for incompleteness
+- A month is considered **incomplete** if:
+  - Trip count is less than 50% of the rolling average (calculated from the last 6 months), OR
+  - Revenue is less than 30% of the rolling average (more aggressive threshold for revenue)
+- All consecutive incomplete months from the end of the historical series are excluded
+- The forecast starts from the last complete month
+
+**What causes incomplete months:**
+- Partial month data (e.g., current month only partially recorded)
+- Data collection delays (completed trips not yet recorded)
+- Reporting lag (data arrives days/weeks after month-end)
+- Anomalously low months due to data quality issues
+
+**Additional Safeguards:**
+- The forecast logic also excludes anomalously low last month from recent average calculations
+- If last month revenue < 30% of recent average (excluding itself), it's excluded from forecast anchoring
+- Jump detection prevents forecasts from starting more than 50% above recent average
+- Forecast dampening logic smooths transitions when jumps are detected
+
+**Example:**
+If the rolling average is 25 bookings/month and $50,000/month revenue:
+- Month with 12 bookings (< 50% of 25) OR $15,000 revenue (< 30% of $50k) → flagged as incomplete, excluded from historical data
+- Month with 15 bookings (≥ 50% of 25) AND $20,000 revenue (≥ 30% of $50k) → considered complete, included in historical data
+
+**Result:** Forecasts start from a complete historical point, eliminating abrupt jumps and providing smoother visual transitions between historical and forecast data. Enhanced detection catches both incomplete months (low trip count) and anomalously low months (low revenue).
 
 ## Usage Examples
 

@@ -221,6 +221,47 @@ Confirmed working versions:
 - Environment: All variables properly loaded
 - Build status: No errors, ready for development
 
+### Forecast Abrupt Jump Fix (Incomplete Month Exclusion)
+
+**Problem**: Revenue forecast showed an abrupt jump from historical data to forecast, starting at an artificially low point. This occurred when the most recent month(s) had incomplete data (e.g., partial month, data collection delays).
+
+**Root Cause**: The pipeline included all completed trips up to the maximum `trip_date` in historical data, even if recent months were incomplete. This caused:
+- Historical data to end at an artificially low revenue point
+- Forecast to start from that low point and jump up dramatically
+- Poor visual transition between historical and forecast data
+
+**Solution**: Implemented automatic exclusion of incomplete recent months from historical data during inference, with enhanced detection logic.
+
+**Implementation Details**:
+- Added `forecast_date` and `exclude_incomplete_months` parameters to `prepare_monthly_revenue()`
+- **Enhanced Detection Logic**:
+  - Checks both trip count AND revenue (not just trip count)
+  - Trip count threshold: < 50% of rolling average (last 6 months)
+  - Revenue threshold: < 30% of rolling average (more aggressive)
+  - Checks up to 4 months (instead of 2) to catch consecutive low months
+- Excludes all consecutive incomplete months from the end of the historical series
+- Forecast starts from the last complete month, ensuring smooth transition
+
+**Additional Safeguards**:
+- Excludes anomalously low last month from recent average calculations
+- If last month revenue < 30% of recent average (excluding itself), excluded from forecast anchoring
+- Jump detection prevents forecasts from starting more than 50% above recent average
+- Forecast dampening logic smooths transitions when jumps are detected
+
+**Files Modified**:
+- `model/data_loader.py`: Enhanced incomplete month detection (trip count + revenue, checks 4 months)
+- `model/inference.py`: Added anomalously low month exclusion from recent average, improved jump detection
+- `model/pipeline.py`: Updated to pass `forecast_date` to `prepare_monthly_revenue()` during inference
+- `jaunty/backend/main.py`: Updated fallback to pass `forecast_date` parameter
+
+**Configuration**:
+- Default: Excludes last 2 months if incomplete (checks up to 4 months)
+- Trip count threshold: 50% of rolling average
+- Revenue threshold: 30% of rolling average (more aggressive)
+- Configurable via `exclude_incomplete_months` parameter
+
+**Result**: Forecasts now start from a representative baseline, eliminating abrupt jumps and providing smoother visual transitions. Enhanced detection catches both incomplete months (low trip count) and anomalously low months (low revenue).
+
 ## Notes for Future Development
 
 1. **Tailwind v4 Architecture**: This project uses the new CSS-based configuration. Do not revert to JavaScript config files.
@@ -232,5 +273,11 @@ Confirmed working versions:
 4. **Caching**: If encountering unexplained issues, always try clearing Vite cache first.
 
 5. **Build Process**: The PostCSS configuration is specifically tuned for Tailwind v4 - do not modify without understanding v4 requirements.
+
+6. **Incomplete Month Detection**: The incomplete month exclusion uses dual thresholds:
+   - Trip count threshold: 50% of rolling average
+   - Revenue threshold: 30% of rolling average (more aggressive)
+   - Checks up to 4 months (default: 2) to catch consecutive low months
+   - These thresholds can be adjusted based on data collection patterns. Monitor forecast quality and adjust if needed.
 
 This documentation should be updated when new issues are discovered or additional fixes are applied.
