@@ -415,7 +415,7 @@ def generate_key_drivers_from_stats(dataset_stats: Dict) -> List[str]:
     return drivers[:5]  # Limit to 5 drivers
 
 
-def generate_funnel_data(pipeline: EnsemblePipeline) -> Optional[List[dict]]:
+def generate_funnel_data(pipeline: EnsemblePipeline, forecast_date: Optional[str] = None) -> Optional[List[dict]]:
     """
     Generate funnel data from pipeline data.
     
@@ -423,7 +423,9 @@ def generate_funnel_data(pipeline: EnsemblePipeline) -> Optional[List[dict]]:
     -----------
     pipeline : EnsemblePipeline
         Pipeline instance with loaded data
-        
+    forecast_date : str, optional
+        Forecast reference date for filtering active pipeline (default: today)
+    
     Returns:
     --------
     list or None
@@ -433,9 +435,35 @@ def generate_funnel_data(pipeline: EnsemblePipeline) -> Optional[List[dict]]:
         if pipeline.data is None or pipeline.data.empty:
             return None
         
+        # For funnel visualization, we want TRUE active pipeline stages only
+        # (not future completed trips that are reclassified for forecasting)
+        # So we filter directly from pipeline.data instead of using get_active_pipeline()
         data = pipeline.data.copy()
         
         if 'current_stage' not in data.columns:
+            return None
+        
+        # Filter to only true active pipeline stages (exclude completed, lost, cancelled)
+        # Also filter by inquiry_date to match forecast_date if provided
+        active_stages = ['inquiry', 'quote_sent', 'booked', 'final_payment']
+        
+        if forecast_date is None:
+            forecast_date = datetime.now()
+        else:
+            forecast_date = pd.to_datetime(forecast_date)
+        
+        # Get true active pipeline (not including future completed trips)
+        # Filter by inquiry_date if available, otherwise just filter by stage
+        if 'inquiry_date' in data.columns:
+            funnel_data_filtered = data[
+                (pd.to_datetime(data['inquiry_date'], errors='coerce') <= forecast_date) &
+                (data['current_stage'].isin(active_stages))
+            ].copy()
+        else:
+            # Fallback: just filter by stage if inquiry_date not available
+            funnel_data_filtered = data[data['current_stage'].isin(active_stages)].copy()
+        
+        if funnel_data_filtered.empty:
             return None
         
         # Define stage order - exclude 'completed' as it's historical data, not current pipeline
@@ -448,14 +476,6 @@ def generate_funnel_data(pipeline: EnsemblePipeline) -> Optional[List[dict]]:
             'final_payment': '#10b981',
             'completed': '#059669'
         }
-        
-        # For funnel, we should only count ACTIVE pipeline leads, not historical completed trips
-        # Historical completed trips are used for training but shouldn't be in the current funnel
-        # The funnel represents the CURRENT pipeline state
-        active_stages = ['inquiry', 'quote_sent', 'booked', 'final_payment']
-        
-        # Filter to only active pipeline stages (exclude completed, lost, cancelled)
-        funnel_data_filtered = data[data['current_stage'].isin(active_stages)].copy()
         
         # Count leads per stage from filtered data
         stage_counts = funnel_data_filtered['current_stage'].value_counts().to_dict()
@@ -1031,8 +1051,8 @@ async def get_dashboard_forecast(
             # Get suggested parameters
             suggested_parameters = get_suggested_parameters()
             
-            # Generate funnel data
-            funnel_data = generate_funnel_data(pipeline)
+            # Generate funnel data (use same forecast_date for consistency)
+            funnel_data = generate_funnel_data(pipeline, forecast_date=forecast_date)
             
             return DashboardForecastResponse(
                 historical=historical_data,

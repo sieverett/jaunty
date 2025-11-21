@@ -25,7 +25,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [isTableMinimized, setIsTableMinimized] = useState(false);
+  const [isTableMinimized, setIsTableMinimized] = useState(true);
 
   // Calculate simulated data locally to be instant
   // Sort by date to ensure chronological order and identify any gaps

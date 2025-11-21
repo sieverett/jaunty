@@ -262,6 +262,37 @@ Confirmed working versions:
 
 **Result**: Forecasts now start from a representative baseline, eliminating abrupt jumps and providing smoother visual transitions. Enhanced detection catches both incomplete months (low trip count) and anomalously low months (low revenue).
 
+### Forecast Smoothing Transition Fix
+
+**Problem**: Even after excluding incomplete months, forecasts could still show abrupt visual jumps when transitioning from historical data to forecast. This occurred when the first forecast month was significantly higher (>30%) than the last historical month, creating a jarring visual discontinuity.
+
+**Root Cause**: The ensemble forecast models (Prophet, XGBoost, Pipeline) generate predictions independently, which can result in the first forecast month being much higher than the last historical month, especially when:
+- Active pipeline value is high
+- Models predict strong growth
+- Recent historical months had lower revenue
+
+**Solution**: Implemented gradual transition smoothing that anchors the forecast to the last historical month and gradually transitions to the full model prediction over the first 3 months.
+
+**Implementation Details**:
+- **Jump Detection**: Calculates jump ratio between first forecast month and last historical month
+- **Smoothing Threshold**: Applies smoothing when jump ratio > 1.3 (30% increase)
+- **Transition Algorithm**:
+  - Month 1: 80% last historical month + 20% model forecast
+  - Month 2: 53% last historical month + 47% model forecast  
+  - Month 3: 27% last historical month + 73% model forecast
+  - Months 4-12: 100% model forecast
+- **Execution Order**: Smoothing is applied AFTER variation is added, ensuring the final forecast is smoothed
+
+**Files Modified**:
+- `model/inference.py`: Added transition smoothing logic after variation application
+
+**Configuration**:
+- Jump threshold: 1.3x (30% increase) - configurable
+- Transition period: 3 months - fixed
+- Transition weights: Linear interpolation from 20% to 100% forecast weight
+
+**Result**: Forecasts now show smooth visual transitions from historical data, eliminating abrupt jumps while preserving the model's growth predictions. The transition is gradual enough to be visually pleasing but fast enough (3 months) to allow the forecast to reflect model predictions.
+
 ## Notes for Future Development
 
 1. **Tailwind v4 Architecture**: This project uses the new CSS-based configuration. Do not revert to JavaScript config files.
@@ -279,5 +310,11 @@ Confirmed working versions:
    - Revenue threshold: 30% of rolling average (more aggressive)
    - Checks up to 4 months (default: 2) to catch consecutive low months
    - These thresholds can be adjusted based on data collection patterns. Monitor forecast quality and adjust if needed.
+
+7. **Forecast Smoothing**: The transition smoothing feature ensures visual continuity between historical and forecast data:
+   - Automatically activates when jump ratio > 1.3 (30% increase)
+   - Uses 3-month gradual transition period
+   - Smoothing is applied AFTER variation to ensure final forecast is smoothed
+   - If forecasts appear too conservative or too aggressive, adjust the jump threshold (currently 1.3) or transition period (currently 3 months)
 
 This documentation should be updated when new issues are discovered or additional fixes are applied.
