@@ -1,0 +1,7 @@
+# Temporary validation files (can be regenerated)
+validation_*.csv
+
+# Keep template and test data
+!data_template.csv
+!test_data.csv
+

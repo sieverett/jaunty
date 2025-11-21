@@ -21,9 +21,30 @@ import json
 import shutil
 from pathlib import Path
 
-# Add project root to path to import model pipeline
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, project_root)
+# Add project root (jaunty/) to path to import model pipeline
+# Since jaunty/ is the git repo root, and we're in jaunty/backend/
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# From jaunty/backend/, go up one level to jaunty/ (repo root)
+project_root = os.path.abspath(os.path.join(_current_dir, '..'))
+
+# Verify model directory exists (should be at jaunty/model/)
+if not os.path.exists(os.path.join(project_root, 'model')):
+    # Fallback: try going up one more level (for different deployment scenarios)
+    alt_root = os.path.abspath(os.path.join(project_root, '..'))
+    if os.path.exists(os.path.join(alt_root, 'model')):
+        project_root = alt_root
+    else:
+        # Last resort: try current directory or check PYTHONPATH
+        if 'PYTHONPATH' in os.environ:
+            for path in os.environ['PYTHONPATH'].split(':'):
+                if os.path.exists(os.path.join(path, 'model')):
+                    project_root = path
+                    break
+
+# Add to Python path if not already there
+if project_root and project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from model.pipeline import EnsemblePipeline
 
@@ -770,7 +791,7 @@ async def generate_forecast(
     """
     Generate a 12-month revenue forecast from historical booking data.
     
-    The CSV file should match the format of data/test_data.csv (or data/data_template.csv) with columns:
+    The CSV file should match the format of jaunty/data/test_data.csv (or jaunty/data/data_template.csv) with columns:
     - lead_id, inquiry_date, destination, trip_price, lead_source, current_stage,
     - is_repeat_customer, quote_date, booking_date, trip_date, final_payment_date, duration_days
     
@@ -1173,7 +1194,7 @@ async def generate_report(
     to create a comprehensive strategic analysis report with insights, recommendations,
     and operational guidance.
     
-    The CSV file should match the format of data/test_data.csv (or data/data_template.csv) with columns:
+    The CSV file should match the format of jaunty/data/test_data.csv (or jaunty/data/data_template.csv) with columns:
     - lead_id, inquiry_date, destination, trip_price, lead_source, current_stage,
     - is_repeat_customer, quote_date, booking_date, trip_date, final_payment_date, duration_days
     

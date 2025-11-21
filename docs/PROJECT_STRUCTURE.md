@@ -4,8 +4,16 @@ This document describes the organization and structure of the Jaunty project.
 
 ## Directory Layout
 
+**Note:** `jaunty/` is the git repository root.
+
 ```
-JAUNTY/
+jaunty/                          # Git repository root
+├── README.md                    # Main project README
+├── .gitignore                   # Git ignore rules
+├── package.json                 # Frontend dependencies
+├── vite.config.ts              # Vite configuration
+├── tsconfig.json               # TypeScript configuration
+│
 ├── data/                        # CSV data files
 │   ├── data_template.csv       # Data format template
 │   ├── test_data.csv           # Test data with active leads
@@ -14,33 +22,30 @@ JAUNTY/
 ├── tmp/                         # Temporary uploaded files
 │   └── [timestamp]_*.csv       # Uploaded CSV files (auto-managed)
 │
-├── model/                      # Core forecasting models
-│   ├── pipeline.py            # Main ensemble pipeline
+├── model/                       # Core forecasting models
+│   ├── pipeline.py             # Main ensemble pipeline
 │   ├── trainer.py              # Model training
 │   ├── inference.py            # Forecast generation
+│   ├── data_loader.py          # Data loading and validation
+│   ├── generate_test_data.py  # Test data generator
+│   ├── artifacts/              # Trained model artifacts
 │   └── ...
 │
-├── report/                     # Strategic Report Generator
-│   ├── report_generator.py    # Main report generator (Azure OpenAI)
+├── report/                      # Strategic Report Generator
+│   ├── report_generator.py     # Main report generator (Azure OpenAI)
 │   ├── fetch_forecast.py       # Helper to fetch forecast from API
-│   ├── example_usage.py       # Usage examples
+│   ├── example_usage.py        # Usage examples
 │   ├── requirements.txt        # Python dependencies
 │   └── README.md               # Report generator documentation
 │
-├── jaunty/
-│   ├── README.md               # Main project README
-│   ├── .gitignore              # Git ignore rules
-│   ├── package.json            # Frontend dependencies
-│   ├── vite.config.ts          # Vite configuration
-│   ├── tsconfig.json           # TypeScript configuration
-│   │
-│   ├── backend/                 # FastAPI Backend Service
-│   │   ├── README.md            # Backend API documentation
-│   │   ├── TESTING.md           # Testing guide for Swagger UI
-│   │   ├── main.py              # FastAPI application
-│   │   ├── example_client.py    # Example API client
-│   │   ├── requirements.txt     # Python dependencies
-│   │   └── .gitignore           # Backend-specific ignores
+├── backend/                     # FastAPI Backend Service
+│   ├── README.md               # Backend API documentation
+│   ├── TESTING.md              # Testing guide for Swagger UI
+│   ├── main.py                 # FastAPI application
+│   ├── example_client.py       # Example API client
+│   ├── requirements.txt        # Python dependencies (consolidated)
+│   ├── render.yaml             # Render deployment config
+│   └── .gitignore              # Backend-specific ignores
 │
 ├── components/                  # React Components
 │   ├── Auth.tsx                 # Authentication component

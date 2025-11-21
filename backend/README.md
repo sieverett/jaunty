@@ -3,7 +3,7 @@
 FastAPI backend service (v1.0.0) for generating 12-month revenue forecasts from historical booking data.
 
 **Location**: `jaunty/backend/`  
-**Model Dependency**: Uses forecasting pipeline from `../../model/`
+**Model Dependency**: Uses forecasting pipeline from `../model/` (within jaunty/ repo)
 
 ## Features
 
@@ -28,7 +28,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Note: The backend uses models from ../../model/artifacts/
+# Note: The backend uses models from ../model/artifacts/ (within jaunty/ repo)
 # Ensure models are trained before generating forecasts
 
 # Optional: Configure Azure OpenAI for /report endpoint
@@ -74,7 +74,7 @@ Upload a CSV file and store it in a temporary directory.
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:8000/upload" \
-  -F "file=@../../data/test_data.csv"
+  -F "file=@../data/test_data.csv"
 ```
 
 **Response:**
@@ -140,7 +140,7 @@ Generates a 12-month revenue forecast from historical data.
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:8000/forecast" \
-  -F "file=@../../data/test_data.csv" \
+  -F "file=@../data/test_data.csv" \
   -F "forecast_date=2024-11-20" \
   -F "train_models=false"
 ```
@@ -190,7 +190,7 @@ Generate forecast data formatted specifically for the frontend dashboard. This e
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:8000/dashboard/forecast" \
-  -F "file=@../../data/test_data.csv" \
+  -F "file=@../data/test_data.csv" \
   -F "train_models=false"
 ```
 
@@ -318,7 +318,7 @@ Trains the ensemble models from historical data.
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:8000/train" \
-  -F "file=@../../data/test_data.csv"
+  -F "file=@../data/test_data.csv"
 ```
 
 **Response:**
@@ -358,7 +358,7 @@ Generates a comprehensive strategic analysis report from historical booking data
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:8000/report" \
-  -F "file=@../../data/test_data.csv" \
+  -F "file=@../data/test_data.csv" \
   -F "forecast_date=2024-11-20" \
   -F "train_models=false"
 ```
@@ -409,7 +409,7 @@ curl -X POST "http://localhost:8000/report" \
 
 ## Data Format
 
-The CSV file must match the format of `data/test_data.csv` (or `data/data_template.csv`) with the following columns:
+The CSV file must match the format of `jaunty/data/test_data.csv` (or `jaunty/data/data_template.csv`) with the following columns:
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -473,7 +473,7 @@ If the rolling average is 25 bookings/month and $50,000/month revenue:
 import requests
 
 # Generate forecast
-with open('../../data/test_data.csv', 'rb') as f:
+with open('../data/test_data.csv', 'rb') as f:
     response = requests.post(
         'http://localhost:8000/forecast',
         files={'file': f},
@@ -585,10 +585,10 @@ backend/
 
 ## Dependencies
 
-The backend depends on the core forecasting models located in `../../model/`:
+The backend depends on the core forecasting models located in `../model/` (within jaunty/ repo):
 - Uses `model.pipeline.EnsemblePipeline` for forecasting
-- Models stored in `../../model/artifacts/`
-- See `../../model/README.md` for model documentation
+- Models stored in `../model/artifacts/`
+- See `../model/README.md` for model documentation
 
 ## Notes
 

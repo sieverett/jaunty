@@ -29,6 +29,7 @@ This guide covers deploying the FastAPI backend to various platforms. Netlify is
    ```
    MAX_TMP_FILES=50
    ALLOWED_ORIGINS=https://your-netlify-app.netlify.app,http://localhost:3006
+   PYTHONPATH=/opt/render/project/src/jaunty
    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/  # Optional
    AZURE_OPENAI_API_KEY=your-api-key  # Optional
    AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name  # Optional

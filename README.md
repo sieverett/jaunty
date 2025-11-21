@@ -4,28 +4,30 @@ A full-stack application for generating 12-month revenue forecasts from historic
 
 ## Project Structure
 
+**Note:** `jaunty/` is the git repository root.
+
 ```
-JAUNTY/
+jaunty/                # Git repository root
 ├── data/              # CSV data files (data_template.csv, test_data.csv)
 ├── model/             # Core forecasting models
 ├── report/            # Strategic report generator (Azure OpenAI)
 ├── tmp/               # Temporary uploaded files (auto-managed)
-├── jaunty/
-│   ├── backend/       # FastAPI backend service
-│   ├── analysis/      # Legacy analysis pipeline (alternative implementation)
-│   ├── docs/          # Documentation
-│   └── [frontend]     # React + TypeScript frontend (root level)
-└── old/               # Archived files
+├── backend/          # FastAPI backend service
+├── docs/              # Documentation
+├── components/       # React components
+├── services/          # Frontend services
+├── utils/             # Frontend utilities
+└── [frontend files]   # React + TypeScript frontend (root level)
 ```
 
 ## Components
 
-### Data (`../data/`)
+### Data (`data/`)
 Centralized data directory containing CSV files:
 - `data_template.csv` - Template showing expected data structure
 - `test_data.csv` - Generated test data with active leads
 
-**See [../data/README.md](../data/README.md) for details.**
+**See [data/README.md](data/README.md) for details.**
 
 ### Backend API (`backend/`)
 FastAPI service that provides REST endpoints for:
@@ -84,18 +86,18 @@ React 19 + TypeScript + Vite application with:
 - `VITE_API_TIMEOUT=60000` - Request timeout (milliseconds)
 
 ### Analysis Pipeline (`analysis/`)
-Legacy/alternative implementation of the forecasting pipeline using a different architecture. This is kept for reference but the main production pipeline is in `../model/`.
+Legacy/alternative implementation of the forecasting pipeline using a different architecture. This is kept for reference but the main production pipeline is in `model/`.
 
 **See [analysis/README.md](analysis/README.md) for details.**
 
-### Core Models (`../model/`)
+### Core Models (`model/`)
 The production forecasting pipeline used by the backend API. Contains:
 - Ensemble pipeline (Prophet + XGBoost + Pipeline models)
 - Data loading and validation
 - Model training and inference
 - Jupyter notebooks for testing
 
-**See [../model/README.md](../model/README.md) for details.**
+**See [model/README.md](model/README.md) for details.**
 
 ## Quick Start
 
@@ -121,25 +123,25 @@ npm run dev
 ```bash
 # Upload a file
 curl -X POST "http://localhost:8000/upload" \
-  -F "file=@../../data/test_data.csv"
+  -F "file=@data/test_data.csv"
 
 # Train models
 curl -X POST "http://localhost:8000/train" \
-  -F "file=@../../data/test_data.csv"
+  -F "file=@data/test_data.csv"
 
 # Generate forecast (with metadata)
 curl -X POST "http://localhost:8000/forecast" \
-  -F "file=@../../data/test_data.csv" \
+  -F "file=@data/test_data.csv" \
   -F "forecast_date=2024-11-20"
 
 # Generate dashboard-formatted forecast (for frontend)
 curl -X POST "http://localhost:8000/dashboard/forecast" \
-  -F "file=@../../data/test_data.csv" \
+  -F "file=@data/test_data.csv" \
   -F "train_models=false"
 
 # Generate strategic report
 curl -X POST "http://localhost:8000/report" \
-  -F "file=@../../data/test_data.csv" \
+  -F "file=@data/test_data.csv" \
   -F "train_models=false"
 ```
 
@@ -169,7 +171,7 @@ VITE_GEMINI_API_KEY=your_api_key_here
 
 ### Backend Configuration
 
-The backend uses models from `../model/artifacts/` directory. Ensure models are trained before generating forecasts.
+The backend uses models from `model/artifacts/` directory. Ensure models are trained before generating forecasts.
 
 **Environment Variables:**
 - `MAX_TMP_FILES`: Maximum files to keep in `tmp/` directory (default: 50)
@@ -184,7 +186,7 @@ The backend uses models from `../model/artifacts/` directory. Ensure models are 
 - [Backend Integration Analysis](docs/BACKEND_INTEGRATION_ANALYSIS.md)
 - [Backend Integration Implementation](docs/BACKEND_INTEGRATION_IMPLEMENTATION.md)
 - [Analysis Pipeline Documentation](analysis/README.md)
-- [Core Models Documentation](../model/README.md)
+- [Core Models Documentation](model/README.md)
 - [Project Structure](docs/PROJECT_STRUCTURE.md)
 - [Fixes & Troubleshooting](docs/FIXES_DOCUMENTATION.md)
 

@@ -284,14 +284,14 @@ def generate_report(csv_path: str, forecast_date: str = None, train_models_flag:
 if __name__ == "__main__":
     import sys
     
-    # Find test_data.csv in data/ directory (JAUNTY project root)
-    # jaunty/backend/ -> jaunty/ -> JAUNTY/
-    project_root = Path(__file__).parent.parent.parent
+    # Find test_data.csv in data/ directory (jaunty/ is the repo root)
+    # jaunty/backend/ -> jaunty/
+    project_root = Path(__file__).parent.parent
     test_data_path = project_root / "data" / "test_data.csv"
     
     if not test_data_path.exists():
         print(f"Error: test_data.csv not found at {test_data_path}")
-        print("Expected location: JAUNTY/data/test_data.csv")
+        print("Expected location: jaunty/data/test_data.csv")
         print("Please provide a CSV file path as an argument")
         sys.exit(1)
     

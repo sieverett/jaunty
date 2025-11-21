@@ -1,0 +1,36 @@
+lead_id,inquiry_date,destination,trip_price,lead_source,current_stage,is_repeat_customer,quote_date,booking_date,trip_date,final_payment_date,duration_days
+LEAD_0001,2023-01-15,Europe,4500,Referral,completed,0,2023-01-18,2023-02-01,2023-07-15,2023-06-15,14
+LEAD_0002,2023-01-18,Asia,5200,Website,lost,0,2023-01-22,,,,10
+LEAD_0003,2023-01-22,Latin America,3800,Repeat,completed,1,2023-01-24,2023-02-05,2023-08-10,2023-07-10,10
+LEAD_0004,2023-02-01,Europe,6200,Referral,completed,0,2023-02-03,2023-02-15,2023-09-20,2023-08-20,21
+LEAD_0005,2023-02-05,Asia,4900,Social Media,quote_sent,0,2023-02-08,,,,14
+LEAD_0006,2023-02-10,Latin America,3200,Website,lost,0,2023-02-13,,,,7
+LEAD_0007,2023-02-15,Europe,5100,Repeat,completed,1,2023-02-17,2023-03-01,2023-10-05,2023-09-05,14
+LEAD_0008,2023-03-01,Asia,7200,Referral,completed,0,2023-03-04,2023-03-18,2023-11-15,2023-10-15,21
+LEAD_0009,2023-03-05,Latin America,4100,Website,booked,0,2023-03-08,2023-03-22,2024-01-10,2023-12-10,14
+LEAD_0010,2023-03-10,Europe,4800,Social Media,inquiry,0,,,,,10
+
+# Column Definitions:
+# 
+# lead_id: Unique identifier for each lead (string)
+# inquiry_date: Date when customer first contacted you (YYYY-MM-DD)
+# destination: Where they want to travel (Latin America, Europe, Asia, or your custom destinations)
+# trip_price: Total cost of the trip in dollars (number)
+# lead_source: How they found you (Referral, Website, Repeat, Social Media, or your custom sources)
+# current_stage: Current status (inquiry, quote_sent, booked, final_payment, completed, lost, cancelled)
+# is_repeat_customer: 1 if returning customer, 0 if new (0 or 1)
+# quote_date: Date you sent them a quote (YYYY-MM-DD or blank if not sent)
+# booking_date: Date they paid deposit/booked (YYYY-MM-DD or blank if not booked)
+# trip_date: Date of actual trip (YYYY-MM-DD or blank if not booked)
+# final_payment_date: Date final payment was made (YYYY-MM-DD or blank)
+# duration_days: Length of trip in days (number)
+#
+# IMPORTANT NOTES:
+# 1. Dates must be in YYYY-MM-DD format
+# 2. Leave date fields blank (empty) if that stage hasn't occurred yet
+# 3. For lost leads, only inquiry_date and quote_date (if sent) should have values
+# 4. For active pipeline, fill in dates up to current stage only
+# 5. trip_price should be 0 for lost/cancelled leads
+# 6. Current stage values must match exactly: inquiry, quote_sent, booked, final_payment, completed, lost, cancelled
+# 7. You need at least 2 years of historical data for accurate forecasting
+# 8. Include ALL leads, even ones that didn't convert - this helps train the model

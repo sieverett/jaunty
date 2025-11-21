@@ -13,14 +13,14 @@ from datetime import datetime
 def create_sample_template():
     """Create sample_data_template.csv with sufficient historical data"""
     
-    # Paths
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+    # Paths - jaunty/ is the repo root
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     test_data_path = os.path.join(project_root, 'data', 'test_data.csv')
-    sample_output_path = os.path.join(project_root, 'jaunty', 'public', 'sample_data_template.csv')
+    sample_output_path = os.path.join(project_root, 'public', 'sample_data_template.csv')
     
     if not os.path.exists(test_data_path):
         print(f"Error: {test_data_path} not found")
-        print("Please run model/generate_test_data.py first to create test_data.csv")
+        print("Please run jaunty/model/generate_test_data.py first to create test_data.csv")
         return False
     
     # Read test data

@@ -10,6 +10,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: PYTHONPATH
+        value: /opt/render/project/src/jaunty
       - key: MAX_TMP_FILES
         value: 50
       # Update with your Netlify frontend URL

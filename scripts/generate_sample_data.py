@@ -9,8 +9,9 @@ to meet the backend's minimum requirements.
 import sys
 import os
 
-# Add project root to path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+# Add project root (jaunty/) to path
+# From jaunty/scripts/, go up one level to jaunty/ (repo root)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 from model.generate_test_data import generate_test_data

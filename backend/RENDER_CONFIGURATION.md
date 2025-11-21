@@ -26,6 +26,7 @@ When creating your web service in Render, use these **exact values**:
    ```
    - This tells Render where your `main.py` file is located
    - **Important:** Enter exactly `jaunty/backend` (no leading slash)
+   - **Note:** If you get `ModuleNotFoundError: No module named 'model'`, try setting Root Directory to just `backend` instead
 
 7. **Build Command**: 
    ```bash
@@ -49,6 +50,10 @@ After creating the service, go to **Environment** tab and add:
 - **Key**: `ALLOWED_ORIGINS`
   **Value**: `https://your-netlify-app.netlify.app,http://localhost:3006`
   (Replace `your-netlify-app` with your actual Netlify domain)
+
+- **Key**: `PYTHONPATH`
+  **Value**: `/opt/render/project/src/jaunty`
+  (This helps Python find the `model` module)
 
 - **Key**: `MAX_TMP_FILES`
   **Value**: `50`

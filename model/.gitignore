@@ -1,0 +1,40 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Model artifacts
+artifacts/
+*.pkl
+*.json
+*.pth
+*.h5
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Test data
+test_data.csv
+
+# Plot outputs
+*.png
+forecast_plot.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
