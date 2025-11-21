@@ -25,26 +25,37 @@ from pathlib import Path
 # Since jaunty/ is the git repo root, and we're in jaunty/backend/
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 
-# From jaunty/backend/, go up one level to jaunty/ (repo root)
-project_root = os.path.abspath(os.path.join(_current_dir, '..'))
+# Strategy 1: Check PYTHONPATH first (set by Render)
+project_root = None
+if 'PYTHONPATH' in os.environ:
+    for path in os.environ['PYTHONPATH'].split(':'):
+        if path and os.path.exists(os.path.join(path, 'model')):
+            project_root = path
+            break
 
-# Verify model directory exists (should be at jaunty/model/)
-if not os.path.exists(os.path.join(project_root, 'model')):
-    # Fallback: try going up one more level (for different deployment scenarios)
-    alt_root = os.path.abspath(os.path.join(project_root, '..'))
+# Strategy 2: From jaunty/backend/, go up one level to jaunty/ (repo root)
+if not project_root:
+    candidate_root = os.path.abspath(os.path.join(_current_dir, '..'))
+    if os.path.exists(os.path.join(candidate_root, 'model')):
+        project_root = candidate_root
+
+# Strategy 3: Fallback - try going up one more level
+if not project_root:
+    alt_root = os.path.abspath(os.path.join(_current_dir, '../..'))
     if os.path.exists(os.path.join(alt_root, 'model')):
         project_root = alt_root
-    else:
-        # Last resort: try current directory or check PYTHONPATH
-        if 'PYTHONPATH' in os.environ:
-            for path in os.environ['PYTHONPATH'].split(':'):
-                if os.path.exists(os.path.join(path, 'model')):
-                    project_root = path
-                    break
+
+# Default to parent directory if nothing found (shouldn't happen)
+if not project_root:
+    project_root = os.path.abspath(os.path.join(_current_dir, '..'))
 
 # Add to Python path if not already there
 if project_root and project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+# Debug: Print resolved paths (helpful for troubleshooting)
+print(f"Resolved project_root: {project_root}")
+print(f"Model directory should be at: {os.path.join(project_root, 'model')}")
 
 from model.pipeline import EnsemblePipeline
 
