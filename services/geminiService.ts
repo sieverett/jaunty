@@ -2,8 +2,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ForecastResponse } from '../types';
 
 // Initialize Gemini Client
-// process.env.API_KEY is guaranteed to be available by the runtime environment instructions
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const forecastSchema: Schema = {
   type: Type.OBJECT,

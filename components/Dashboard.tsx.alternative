@@ -1,0 +1,45 @@
+// Alternative positioning options for collapsed panel:
+
+// Option 1: Current implementation - stays in grid next to charts
+// (Already implemented - keeps panel in grid layout)
+
+// Option 2: Floating panel with margin from edge
+{isPanelCollapsed ? (
+  <div className="hidden lg:block fixed top-24 right-8 z-20">
+    <div className="relative bg-white rounded-xl border border-slate-200 shadow-sm p-2 w-16">
+      {/* ... */}
+    </div>
+  </div>
+) : (
+  // ...
+)}
+
+// Option 3: Overlay on top of chart (transparent background)
+{isPanelCollapsed ? (
+  <div className="hidden lg:block absolute top-0 right-0 z-20">
+    <div className="relative bg-white/95 backdrop-blur-sm rounded-l-xl border border-slate-200 shadow-sm p-2 w-16">
+      {/* ... */}
+    </div>
+  </div>
+) : (
+  // ...
+)}
+
+// Option 4: Compact horizontal bar at top of chart area
+{isPanelCollapsed ? (
+  <div className="hidden lg:block lg:col-span-3 -mb-4">
+    <div className="relative bg-white rounded-lg border border-slate-200 shadow-sm p-2">
+      <button onClick={() => setIsPanelCollapsed(false)} className="absolute -left-4 top-1/2...">
+        <ChevronDown className="..." />
+      </button>
+      <div className="flex items-center justify-center space-x-4">
+        <Sliders className="w-4 h-4" />
+        <span className="text-sm">Scenario Builder</span>
+        {/* Show current values inline */}
+      </div>
+    </div>
+  </div>
+) : (
+  // ...
+)}
+

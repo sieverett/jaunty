@@ -1,0 +1,249 @@
+# Jaunty Project Structure
+
+This document describes the organization and structure of the Jaunty project.
+
+## Directory Layout
+
+```
+JAUNTY/
+├── data/                        # CSV data files
+│   ├── data_template.csv       # Data format template
+│   ├── test_data.csv           # Test data with active leads
+│   └── README.md               # Data directory documentation
+│
+├── tmp/                         # Temporary uploaded files
+│   └── [timestamp]_*.csv       # Uploaded CSV files (auto-managed)
+│
+├── model/                      # Core forecasting models
+│   ├── pipeline.py            # Main ensemble pipeline
+│   ├── trainer.py              # Model training
+│   ├── inference.py            # Forecast generation
+│   └── ...
+│
+├── report/                     # Strategic Report Generator
+│   ├── report_generator.py    # Main report generator (Azure OpenAI)
+│   ├── fetch_forecast.py       # Helper to fetch forecast from API
+│   ├── example_usage.py       # Usage examples
+│   ├── requirements.txt        # Python dependencies
+│   └── README.md               # Report generator documentation
+│
+├── jaunty/
+│   ├── README.md               # Main project README
+│   ├── .gitignore              # Git ignore rules
+│   ├── package.json            # Frontend dependencies
+│   ├── vite.config.ts          # Vite configuration
+│   ├── tsconfig.json           # TypeScript configuration
+│   │
+│   ├── backend/                 # FastAPI Backend Service
+│   │   ├── README.md            # Backend API documentation
+│   │   ├── TESTING.md           # Testing guide for Swagger UI
+│   │   ├── main.py              # FastAPI application
+│   │   ├── example_client.py    # Example API client
+│   │   ├── requirements.txt     # Python dependencies
+│   │   └── .gitignore           # Backend-specific ignores
+│
+├── components/                  # React Components
+│   ├── Auth.tsx                 # Authentication component
+│   ├── Charts.tsx               # Chart visualizations
+│   ├── Dashboard.tsx             # Main dashboard
+│   ├── FileUpload.tsx           # File upload component
+│   └── Header.tsx                # Header component
+│
+├── services/                    # Frontend Services
+│   ├── dataService.ts          # Unified data service (mock/API/Gemini)
+│   ├── mockDataService.ts      # Mock data generator for development
+│   └── geminiService.ts        # Google Gemini AI service
+│
+├── docs/                        # Documentation
+│   ├── FIXES_DOCUMENTATION.md   # Fixes and troubleshooting
+│   ├── PROJECT_STRUCTURE.md     # This file
+│   ├── BACKEND_INTEGRATION_ANALYSIS.md      # Backend integration analysis
+│   └── BACKEND_INTEGRATION_IMPLEMENTATION.md # Backend integration implementation summary
+│
+├── analysis/                    # Legacy Analysis Pipeline
+│   ├── README.md                # Analysis pipeline docs
+│   ├── pipeline.py              # Legacy pipeline runner
+│   ├── requirements.txt         # Analysis dependencies
+│   ├── config/                  # Configuration files
+│   ├── src/                     # Source code
+│   │   ├── data/               # Data processing
+│   │   ├── models/              # Model implementations
+│   │   ├── utils/               # Utilities
+│   │   └── visualization/      # Visualization tools
+│   └── notebooks/               # Jupyter notebooks
+│
+└── [frontend files]             # React/TypeScript frontend
+    ├── index.tsx                # Entry point
+    ├── App.tsx                  # Main app component
+    ├── index.css                # Global styles
+    └── types.ts                 # TypeScript types
+```
+
+## Key Directories
+
+### `/data` (in JAUNTY root)
+Contains all CSV data files:
+- `data_template.csv` - Template showing expected data structure
+- `test_data.csv` - Generated test data with active leads
+- Temporary validation files may also be created here
+
+### `/tmp` (in JAUNTY root)
+Temporary directory for uploaded CSV files:
+- Files are automatically timestamped (e.g., `20241120_211500_filename.csv`)
+- Automatic cleanup maintains maximum file limit (default: 50 files)
+- Oldest files are deleted when limit is exceeded
+- Configure limit with `MAX_TMP_FILES` environment variable
+- Directory is created automatically if it doesn't exist
+
+### `/backend`
+FastAPI service that provides REST API endpoints for forecasting. Uses the core models from `../../model/`.
+
+**Key Files:**
+- `main.py` - FastAPI application with endpoints
+- `example_client.py` - Example Python client for testing
+- `TESTING.md` - Guide for testing endpoints in Swagger UI
+- `requirements.txt` - Python dependencies
+
+**API Endpoints:**
+- `POST /upload` - Upload CSV files to `tmp/` directory with auto-cleanup
+- `POST /train` - Train ensemble forecasting models
+- `POST /forecast` - Generate 12-month revenue forecasts (with metadata)
+- `POST /dashboard/forecast` - Generate dashboard-formatted forecast (historical + forecast + insights)
+- `POST /report` - Generate strategic analysis reports (requires Azure OpenAI)
+- `GET /health` - Health check and model status
+- `GET /docs` - Interactive Swagger UI documentation
+
+**Dependencies:**
+- Uses `../../model/pipeline.py` for forecasting
+- Models stored in `../../model/artifacts/`
+- Optional: Azure OpenAI for `/report` endpoint
+- File uploads stored in `../../tmp/` directory
+
+### `/components`
+React components for the frontend UI.
+
+### `/services`
+Frontend service modules for data fetching and AI integration.
+
+**Key Files:**
+- `dataService.ts` - Unified data service that switches between mock data, backend API, and Gemini AI
+- `mockDataService.ts` - Mock data generator for frontend development and testing
+- `geminiService.ts` - Google Gemini AI integration for forecast generation
+
+**Data Service Flow:**
+1. Checks `VITE_USE_MOCK_DATA` environment variable for mock mode
+2. If API URL is set and file provided, uses backend API (`/dashboard/forecast`)
+3. Falls back to Gemini AI if neither mock nor API is configured
+
+**Configuration:**
+- `VITE_USE_MOCK_DATA=true` - Enable mock data mode
+- `VITE_API_URL=http://localhost:8000` - Backend API URL
+- `VITE_API_TIMEOUT=60000` - API request timeout (milliseconds)
+
+### `/report`
+Strategic report generator that uses Azure OpenAI to analyze forecast metadata and generate comprehensive strategic analysis reports.
+
+**Key Files:**
+- `report_generator.py` - Main ReportGenerator class that interfaces with Azure OpenAI
+- `fetch_forecast.py` - Helper script to fetch forecast data from backend API
+- `example_usage.py` - Example usage demonstrations
+- `requirements.txt` - Dependencies (openai, python-dotenv, requests)
+
+**Functionality:**
+- Takes forecast metadata from the backend API
+- Generates strategic analysis reports using Azure OpenAI
+- Outputs JSON reports with executive summary, driving factors, outliers, and operational recommendations
+
+**Dependencies:**
+- Requires Azure OpenAI credentials in `.env` file
+- Uses forecast data from `jaunty/backend/` API
+
+### `/analysis`
+Legacy/alternative implementation of the forecasting pipeline. Kept for reference but not used in production.
+
+### `/docs`
+Project documentation including fixes, structure, and guides.
+
+## Import Paths
+
+### Backend Imports
+```python
+# Backend imports from model directory (parent of jaunty)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, project_root)
+from model.pipeline import EnsemblePipeline
+```
+
+### Frontend Imports
+```typescript
+// Frontend uses standard relative imports
+import { Auth } from './components/Auth'
+import { geminiService } from './services/geminiService'
+```
+
+## Model Dependency
+
+The backend API depends on the core forecasting models located in:
+- **Path**: `../../model/` (relative to `jaunty/backend/`)
+- **Absolute**: `./model/`
+
+This directory contains:
+- `pipeline.py` - Main ensemble pipeline
+- `trainer.py` - Model training logic
+- `inference.py` - Forecast generation
+- `data_loader.py` - Data loading and validation
+- `artifacts/` - Trained model files
+
+## Development Workflow
+
+1. **Backend Development**: Work in `jaunty/backend/`
+2. **Frontend Development**: Work in `jaunty/` (root)
+3. **Model Development**: Work in `model/` (parent directory)
+4. **Report Generation**: Work in `report/` (root level)
+5. **Testing**: Use `backend/example_client.py` for API testing
+
+## File Organization Rules
+
+1. **Backend code** → `backend/`
+2. **Frontend code** → Root level (React convention)
+3. **Documentation** → `docs/`
+4. **Report generation** → `report/` (root level)
+5. **Uploaded files** → `tmp/` (root level, auto-managed)
+6. **Legacy code** → `analysis/` (marked as legacy)
+7. **Core models** → `../../model/` (shared across projects)
+
+## Backend Integration
+
+The frontend can now use real backend API endpoints instead of mock data. The integration includes:
+
+**Backend Endpoint:**
+- `/dashboard/forecast` - Returns data in format matching frontend `ForecastResponse` interface
+  - Historical monthly revenue data
+  - 12-month forecast data
+  - AI-generated insights
+  - Key revenue drivers
+  - Suggested parameters for scenario simulation
+  - Optional funnel data
+
+**Frontend Data Service:**
+- Automatically switches between mock data, backend API, and Gemini AI
+- Enhanced error handling with timeout support
+- Response validation and transformation
+- User-friendly error messages
+
+**Configuration:**
+- Set `VITE_USE_MOCK_DATA=false` and `VITE_API_URL` to use backend API
+- Keep `VITE_USE_MOCK_DATA=true` for frontend-only development
+
+**See `docs/BACKEND_INTEGRATION_ANALYSIS.md` and `docs/BACKEND_INTEGRATION_IMPLEMENTATION.md` for details.**
+
+## Notes
+
+- The `analysis/` directory is kept for reference but the production pipeline is in `../../model/`
+- Backend imports use relative paths to access the model directory
+- Frontend and backend are separate but can be developed independently
+- All documentation should be kept in `docs/` directory
+- The `tmp/` directory is automatically managed - files are cleaned up when limit is exceeded
+- Use Swagger UI (`/docs`) for interactive API testing - see `backend/TESTING.md` for guide
+- Frontend can use mock data (`VITE_USE_MOCK_DATA=true`) or real backend API (`VITE_API_URL`)
+

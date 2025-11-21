@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Plane, TrendingUp, LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '../types';
 
 interface HeaderProps {
@@ -13,20 +13,19 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="bg-brand-600 p-2 rounded-lg">
-            <Plane className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-center w-10 h-10">
+            <img 
+              src="/logo.png" 
+              alt="Jaunty Logo" 
+              className="w-full h-full object-contain"
+            />
           </div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Travel<span className="text-brand-600">Forecast</span> AI
+          <h1 className="text-xl font-bold tracking-tight">
+            <span className="text-slate-900">Jaunty</span><span className="text-brand-600">Forecast</span>
           </h1>
         </div>
         
         <div className="flex items-center space-x-6">
-          <div className="hidden md:flex items-center text-sm text-slate-500">
-            <TrendingUp className="w-4 h-4 mr-1 text-green-500" />
-            <span>Powered by Gemini 2.5 Flash</span>
-          </div>
-
           {user && (
             <div className="flex items-center pl-6 border-l border-slate-200 space-x-4">
               <div className="flex flex-col items-end">

@@ -4,7 +4,7 @@ import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { Dashboard } from './components/Dashboard';
 import { Auth } from './components/Auth';
-import { analyzeTravelData } from './services/geminiService';
+import { analyzeTravelData } from './services/dataService';
 import { AppState, ForecastResponse, User, SavedForecast } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -39,15 +39,18 @@ export default function App() {
     handleReset();
   };
 
-  const handleFileUpload = async (csvContent: string) => {
+  const handleFileUpload = async (csvContent: string, file?: File) => {
     setAppState(AppState.ANALYZING);
     try {
-      const data = await analyzeTravelData(csvContent);
+      const data = await analyzeTravelData(csvContent, file);
       setForecastData(data);
       setAppState(AppState.DASHBOARD);
     } catch (error) {
       console.error(error);
-      setErrorMessage("Failed to analyze data. Please ensure your CSV format is correct and try again.");
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Failed to analyze data. Please ensure your CSV format is correct and try again.";
+      setErrorMessage(errorMessage);
       setAppState(AppState.ERROR);
     }
   };
@@ -123,7 +126,7 @@ export default function App() {
             <Loader2 className="w-12 h-12 text-brand-600 animate-spin mb-4" />
             <h2 className="text-xl font-semibold text-slate-900">Analyzing Historical Data</h2>
             <p className="text-slate-500 mt-2 max-w-md text-center">
-              Gemini is identifying seasonal patterns, booking trends, and calculating your 12-month forecast...
+              Analyzing seasonal patterns, booking trends, and calculating your 12-month forecast...
             </p>
           </div>
         )}

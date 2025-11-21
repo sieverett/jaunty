@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
-import { UploadCloud, FileText, AlertCircle, Table, History, Trash2, ArrowRight, Calendar } from 'lucide-react';
+import { UploadCloud, FileText, AlertCircle, Table, History, Trash2, ArrowRight, Calendar, Download, Play } from 'lucide-react';
 import { SavedForecast, User } from '../types';
 
 interface FileUploadProps {
-  onFileUpload: (content: string) => void;
+  onFileUpload: (content: string, file?: File) => void;
   savedForecasts: SavedForecast[];
   onLoadForecast: (forecast: SavedForecast) => void;
   onDeleteForecast: (id: string) => void;
@@ -42,7 +42,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         setError("File is empty.");
         return;
       }
-      onFileUpload(content);
+      onFileUpload(content, file); // Pass file object for API calls
     };
     reader.onerror = () => setError("Failed to read file.");
     reader.readAsText(file);
@@ -68,18 +68,76 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-  const templateData = `Date,Revenue,Bookings,Destination_Region
-2023-01,45000,120,Europe
-2023-02,42000,110,Europe
-2023-03,55000,150,Asia
-...`;
+  const handleDownloadTemplate = async () => {
+    setError(null);
+    try {
+      // Add cache-busting parameter to ensure we get the latest file
+      const cacheBuster = `?t=${Date.now()}`;
+      const response = await fetch(`/sample_data_template.csv${cacheBuster}`, {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch template: ${response.status} ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sample_data_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to download template:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to download template. Please try again.';
+      setError(errorMessage);
+    }
+  };
+
+  const handleLoadSampleData = async () => {
+    setError(null);
+    try {
+      // Add cache-busting parameter to ensure we get the latest file
+      const cacheBuster = `?t=${Date.now()}`;
+      const response = await fetch(`/sample_data_template.csv${cacheBuster}`, {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch sample data: ${response.status} ${response.statusText}`);
+      }
+      
+      const content = await response.text();
+      if (!content || content.trim().length === 0) {
+        throw new Error('Sample data file is empty');
+      }
+      
+      // Create a File object from the fetched content so backend API can use it
+      const blob = new Blob([content], { type: 'text/csv' });
+      const file = new File([blob], 'sample_data_template.csv', { type: 'text/csv' });
+      onFileUpload(content, file);
+    } catch (error) {
+      console.error('Failed to load sample data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load sample data. Please try again.';
+      setError(errorMessage);
+    }
+  };
 
   return (
     <div className="max-w-5xl mx-auto mt-8 px-4 sm:px-6 pb-12">
       <div className="text-center mb-10">
-        <h2 className="text-3xl font-bold text-slate-900 mb-4">Predict Your Revenue with AI</h2>
+        <h2 className="text-3xl font-bold text-slate-900 mb-4">Predict Your Revenue with ML & AI</h2>
         <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-          Upload your historical booking data. Our Gemini-powered engine will analyze trends, seasonality, and market drivers to generate a precise forecast.
+          Upload your historical booking data. Our ML and AI models will analyze trends, seasonality, and market drivers to generate a precise revenue forecast.
         </p>
       </div>
 
@@ -131,15 +189,38 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           )}
 
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
-            <div className="flex items-center mb-4">
-              <FileText className="w-5 h-5 text-slate-500 mr-2" />
-              <h4 className="font-semibold text-slate-900">Required Data Format</h4>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center">
+                <FileText className="w-5 h-5 text-slate-500 mr-2" />
+                <h4 className="font-semibold text-slate-900">Sample Data Template</h4>
+              </div>
             </div>
             <p className="text-sm text-slate-600 mb-4">
-              Your CSV file should include at least <strong>Date</strong> (YYYY-MM) and <strong>Revenue</strong> columns.
+              Download our sample CSV template to see the required data format, or load sample data to explore the dashboard.
             </p>
-            <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
-              <pre className="text-xs text-slate-300 font-mono">{templateData}</pre>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleDownloadTemplate}
+                className="flex items-center justify-center px-4 py-2.5 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 hover:border-brand-400 hover:text-brand-700 transition-colors font-medium text-sm"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Template
+              </button>
+              <button
+                onClick={handleLoadSampleData}
+                className="flex items-center justify-center px-4 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium text-sm shadow-sm"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Load Sample Data
+              </button>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <p className="text-xs text-slate-500 mb-2">
+                <strong>Required columns:</strong> <code className="bg-slate-200 px-1.5 py-0.5 rounded">Date</code> (YYYY-MM-DD), <code className="bg-slate-200 px-1.5 py-0.5 rounded">Revenue</code>
+              </p>
+              <p className="text-xs text-slate-500">
+                <strong>Optional columns:</strong> <code className="bg-slate-200 px-1.5 py-0.5 rounded">Bookings</code>, <code className="bg-slate-200 px-1.5 py-0.5 rounded">Destination_Region</code>, and others
+              </p>
             </div>
           </div>
         </div>

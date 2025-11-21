@@ -19,6 +19,7 @@ export interface ForecastResponse {
     default: number;
     description: string;
   }[];
+  funnel?: FunnelData[];  // Optional funnel data
 }
 
 export interface SavedForecast {
@@ -46,4 +47,20 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+}
+
+export interface FunnelData {
+  stage: string;
+  count: number;
+  conversionRate?: number;  // % that moved to next stage
+  dropOffRate?: number;      // % that didn't progress
+  revenuePotential: number;  // Sum of trip_price
+  avgDaysInStage?: number;
+  color: string;             // Based on conversion rate
+}
+
+export interface FunnelChartProps {
+  data: FunnelData[];
+  showLost?: boolean;        // Include lost leads
+  showCancelled?: boolean;   // Include cancelled leads
 }
