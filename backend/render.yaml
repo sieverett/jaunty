@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: jaunty-backend
+    runtime: python
+    plan: free  # or starter/standard for production
+    # Note: Root directory should be set to jaunty/backend in Render dashboard
+    # Build command installs backend and model dependencies
+    buildCommand: |
+      pip install -r requirements.txt
+      pip install -r ../../model/requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: MAX_TMP_FILES
+        value: 50
+      # Update with your Netlify frontend URL
+      - key: ALLOWED_ORIGINS
+        value: https://your-netlify-app.netlify.app,http://localhost:3006
+      # Add your Azure OpenAI credentials here if using /report endpoint
+      # - key: AZURE_OPENAI_ENDPOINT
+      #   value: your-endpoint
+      # - key: AZURE_OPENAI_API_KEY
+      #   value: your-api-key
+      # - key: AZURE_OPENAI_DEPLOYMENT_NAME
+      #   value: your-deployment-name
+
