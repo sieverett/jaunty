@@ -13,11 +13,27 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, user }) => {
-  // Initialize simulation state based on suggested parameters
-  const initialSimState: SimulationState = {};
-  data.suggestedParameters.forEach(p => {
-    initialSimState[p.key] = p.default;
-  });
+  // Initialize simulation state based on suggested parameters with defensive guards
+  const initialSimState: SimulationState = React.useMemo(() => {
+    const state: SimulationState = {};
+
+    // Defensive guard: ensure data and suggestedParameters exist and are valid
+    if (!data || !Array.isArray(data.suggestedParameters)) {
+      console.warn('Dashboard: Invalid data structure - suggestedParameters missing or invalid');
+      return state;
+    }
+
+    data.suggestedParameters.forEach(p => {
+      // Additional defensive guard for each parameter
+      if (p && typeof p.key === 'string' && typeof p.default === 'number') {
+        state[p.key] = p.default;
+      } else {
+        console.warn('Dashboard: Invalid parameter structure:', p);
+      }
+    });
+
+    return state;
+  }, [data]);
 
   const [simParams, setSimParams] = useState<SimulationState>(initialSimState);
   const [activeTab, setActiveTab] = useState<'forecast' | 'insights'>('forecast');
@@ -30,6 +46,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   // Calculate simulated data locally to be instant
   // Sort by date to ensure chronological order and identify any gaps
   const simulatedData = useMemo(() => {
+    // Defensive guard: ensure data exists and has required arrays
+    if (!data || !Array.isArray(data.historical) || !Array.isArray(data.forecast)) {
+      console.warn('Dashboard: Invalid data structure - historical or forecast data missing');
+      return [];
+    }
+
     const combined = [...data.historical, ...data.forecast]
       .map(point => {
         let newRevenue = Number(point.revenue);
@@ -55,15 +77,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
   // Calculate all forecast metrics using useMemo to ensure they update when simulatedData changes
   const forecastMetrics = useMemo(() => {
+    // Defensive guard: ensure simulatedData exists and is an array
+    if (!Array.isArray(simulatedData) || simulatedData.length === 0) {
+      return {
+        totalForecastRevenue: 0,
+        baselineForecastRevenue: 0,
+        diff: 0,
+        diffPercent: 0,
+        forecast1mo: 0,
+        forecast3mo: 0,
+        forecast6mo: 0,
+        compare1mo: 0,
+        compare3mo: 0,
+        compare6mo: 0,
+        avg12mo: 0,
+      };
+    }
+
     const totalForecastRevenue = simulatedData
-      .filter(d => d.type === 'forecast')
+      .filter(d => d && d.type === 'forecast' && typeof d.revenue === 'number')
       .reduce((sum, d) => sum + d.revenue, 0);
 
-    const baselineForecastRevenue = data.forecast
-      .reduce((sum, d) => sum + d.revenue, 0);
+    // Defensive guard for baseline calculation
+    const baselineForecastRevenue = (data && Array.isArray(data.forecast))
+      ? data.forecast.filter(d => d && typeof d.revenue === 'number').reduce((sum, d) => sum + d.revenue, 0)
+      : 0;
       
     const diff = totalForecastRevenue - baselineForecastRevenue;
-    const diffPercent = (diff / baselineForecastRevenue) * 100;
+    const diffPercent = baselineForecastRevenue > 0 ? (diff / baselineForecastRevenue) * 100 : 0;
 
     // Calculate forecasted revenue for different time periods
     // Ensure forecast data is sorted by date (ascending) to get correct chronological order
@@ -76,7 +117,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
     const forecast6mo = forecastData.slice(0, 6).reduce((sum, d) => sum + d.revenue, 0);
 
     // Calculate historical average for comparison (monthly average)
-    const historicalAvg = data.historical.reduce((a, b) => a + b.revenue, 0) / data.historical.length;
+    const historicalAvg = (data && Array.isArray(data.historical) && data.historical.length > 0)
+      ? data.historical.filter(d => d && typeof d.revenue === 'number').reduce((a, b) => a + b.revenue, 0) / data.historical.length
+      : 0;
     
     // Calculate comparison percentages vs historical average
     // For 1mo: compare single month directly to monthly average
