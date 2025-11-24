@@ -29,16 +29,15 @@ export async function analyzeTravelData(
   if (!file) {
     throw new Error('File is required. Please upload a CSV file.');
   }
-  
+
   if (!API_URL) {
     throw new Error('API URL not configured. Please set VITE_API_URL in your environment.');
   }
-  
+
   try {
-    const result = await fetchFromBackendAPI(file);
-    return result;
+    return await fetchFromBackendAPI(file);
   } catch (error) {
-    // Re-throw error so user sees what went wrong
+    console.error('[API] Error in analyzeTravelData:', error);
     throw error;
   }
 }
@@ -50,26 +49,28 @@ async function fetchFromBackendAPI(file: File): Promise<ForecastResponse> {
   if (!API_URL) {
     throw new Error('API URL not configured');
   }
-  
+
   const formData = new FormData();
   formData.append('file', file);
   formData.append('train_models', 'true'); // Always retrain models on new data to ensure forecasts match the uploaded dataset
-  
+
   const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '60000', 10); // Default 60 seconds
-  
+
   // Create abort controller for timeout
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
-  
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, API_TIMEOUT);
+
   try {
     const response = await fetch(`${API_URL}/dashboard/forecast`, {
       method: 'POST',
       body: formData,
       signal: controller.signal,
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       let errorMessage = `API error: ${response.status}`;
       try {
@@ -80,29 +81,33 @@ async function fetchFromBackendAPI(file: File): Promise<ForecastResponse> {
       }
       throw new Error(errorMessage);
     }
-    
+
     const data = await response.json();
-    
+
     // Validate response structure
     if (!data.historical || !data.forecast) {
       throw new Error('Invalid response format from backend API');
     }
-    
+
     return data as ForecastResponse;
   } catch (error) {
     clearTimeout(timeoutId);
-    
+
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
+        console.error('[API] Request aborted (timeout)');
         throw new Error('Request timed out. Please try again or use a smaller dataset.');
       }
       // Check for network errors
       if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_')) {
+        console.error('[API] Network error:', error.message);
         throw new Error(`Cannot connect to backend API at ${API_URL}. Make sure the backend server is running.`);
       }
+      console.error('[API] Other error:', error);
       throw error;
     }
-    
+
+    console.error('[API] Unknown error:', error);
     throw new Error(`Failed to fetch forecast: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

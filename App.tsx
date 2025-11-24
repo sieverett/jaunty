@@ -33,6 +33,7 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         isUploading: true,
         errorMessage: null
       };
+
     case 'UPLOAD_SUCCESS':
       return {
         ...state,
@@ -41,6 +42,7 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         isUploading: false,
         errorMessage: null
       };
+
     case 'UPLOAD_ERROR':
       return {
         ...state,
@@ -48,6 +50,7 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         errorMessage: action.payload,
         isUploading: false
       };
+
     case 'RESET':
       return {
         ...state,
@@ -56,6 +59,7 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         errorMessage: null,
         isUploading: false
       };
+
     case 'LOAD_FORECAST':
       return {
         ...state,
@@ -63,6 +67,7 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         forecastData: action.payload,
         errorMessage: null
       };
+
     default:
       return state;
   }
@@ -104,21 +109,20 @@ export default function App() {
   };
 
   const handleFileUpload = async (csvContent: string, file?: File) => {
-    if (state.isUploading) return; // Prevent concurrent uploads
+    if (state.isUploading) {
+      return; // Prevent concurrent uploads
+    }
 
-    // Single atomic state update to start upload
     dispatch({ type: 'START_UPLOAD' });
 
     try {
       const data = await analyzeTravelData(csvContent, file);
-      // Single atomic state update on success
       dispatch({ type: 'UPLOAD_SUCCESS', payload: data });
     } catch (error) {
-      console.error(error);
+      console.error('[UPLOAD] Error during upload:', error);
       const errorMessage = error instanceof Error
         ? error.message
         : "Failed to analyze data. Please ensure your CSV format is correct and try again.";
-      // Single atomic state update on error
       dispatch({ type: 'UPLOAD_ERROR', payload: errorMessage });
     }
   };
@@ -156,8 +160,13 @@ export default function App() {
 
   // Strict Data Filtering: Do not even pass restricted data to components if user is not admin
   const safeForecastData = React.useMemo(() => {
-    if (!state.forecastData) return null;
-    if (user?.role === 'admin') return state.forecastData;
+    if (!state.forecastData) {
+      return null;
+    }
+
+    if (user?.role === 'admin') {
+      return state.forecastData;
+    }
 
     // Analyst View: Strip sensitive insights
     return {

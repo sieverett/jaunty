@@ -17,11 +17,15 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   public static getDerivedStateFromError(error: Error): State {
+    console.error('[ERROR_BOUNDARY] getDerivedStateFromError called', error);
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
+    console.error('[ERROR_BOUNDARY] componentDidCatch called');
+    console.error('[ERROR_BOUNDARY] Error:', error);
+    console.error('[ERROR_BOUNDARY] ErrorInfo:', errorInfo);
+    console.error('[ERROR_BOUNDARY] Component stack:', errorInfo.componentStack);
   }
 
   private handleReset = () => {

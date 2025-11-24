@@ -13,13 +13,13 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, user }) => {
+
   // Initialize simulation state based on suggested parameters with defensive guards
   const initialSimState: SimulationState = React.useMemo(() => {
     const state: SimulationState = {};
 
     // Defensive guard: ensure data and suggestedParameters exist and are valid
     if (!data || !Array.isArray(data.suggestedParameters)) {
-      console.warn('Dashboard: Invalid data structure - suggestedParameters missing or invalid');
       return state;
     }
 
@@ -27,8 +27,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
       // Additional defensive guard for each parameter
       if (p && typeof p.key === 'string' && typeof p.default === 'number') {
         state[p.key] = p.default;
-      } else {
-        console.warn('Dashboard: Invalid parameter structure:', p);
       }
     });
 
@@ -48,7 +46,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   const simulatedData = useMemo(() => {
     // Defensive guard: ensure data exists and has required arrays
     if (!data || !Array.isArray(data.historical) || !Array.isArray(data.forecast)) {
-      console.warn('Dashboard: Invalid data structure - historical or forecast data missing');
       return [];
     }
 
