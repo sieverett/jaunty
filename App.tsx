@@ -14,6 +14,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [savedForecasts, setSavedForecasts] = useState<SavedForecast[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Check for persisted session and data on mount
   useEffect(() => {
@@ -40,18 +41,22 @@ export default function App() {
   };
 
   const handleFileUpload = async (csvContent: string, file?: File) => {
+    if (isUploading) return; // Prevent concurrent uploads
+    setIsUploading(true);
     setAppState(AppState.ANALYZING);
     try {
       const data = await analyzeTravelData(csvContent, file);
       setForecastData(data);
       setAppState(AppState.DASHBOARD);
+      setIsUploading(false);
     } catch (error) {
       console.error(error);
-      const errorMessage = error instanceof Error 
-        ? error.message 
+      const errorMessage = error instanceof Error
+        ? error.message
         : "Failed to analyze data. Please ensure your CSV format is correct and try again.";
       setErrorMessage(errorMessage);
       setAppState(AppState.ERROR);
+      setIsUploading(false);
     }
   };
 
