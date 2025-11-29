@@ -1,9 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
-import { ForecastResponse, SimulationState, User } from '../types';
-import { RevenueChart, FunnelChart } from './Charts';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { ForecastResponse, SimulationState, User, FunnelData } from '../types';
+import { RevenueChart, FunnelChart, DateRangeSelector } from './Charts';
+import { getFunnelData, getFunnelDateRange } from '../services/dataService';
 import { Sliders, ArrowLeft, Zap, TrendingUp, TrendingDown, DollarSign, Lock, Save, ChevronLeft, ChevronRight, Download, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
-import { exportForecastToPDF } from '../utils/pdfExport';
+import { exportDashboardToPDF } from '../utils/pdf/pdfExportV2';
+import type { ForecastMetrics } from '../utils/pdf/types';
 
 interface DashboardProps {
   data: ForecastResponse;
@@ -40,6 +42,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [isTableMinimized, setIsTableMinimized] = useState(true);
+
+  // Funnel-specific state
+  const [funnelData, setFunnelData] = useState<FunnelData[]>(data.funnel || []);
+  const [funnelStartDate, setFunnelStartDate] = useState<string>('');
+  const [funnelEndDate, setFunnelEndDate] = useState<string>('');
+  const [funnelDateRange, setFunnelDateRange] = useState<{ minDate: string; maxDate: string } | null>(null);
+  const [isFunnelLoading, setIsFunnelLoading] = useState(false);
+  const [funnelError, setFunnelError] = useState<string | null>(null);
 
   // Calculate simulated data locally to be instant
   // Sort by date to ensure chronological order and identify any gaps
@@ -162,6 +172,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
   const isAdmin = user.role === 'admin';
 
+  // Initialize funnel date range on component mount
+  useEffect(() => {
+    const initializeFunnelDateRange = async () => {
+      if (data.funnel && data.funnel.length > 0) {
+        try {
+          const dateRange = await getFunnelDateRange();
+          setFunnelDateRange(dateRange);
+          setFunnelStartDate(dateRange.minDate);
+          setFunnelEndDate(dateRange.maxDate);
+          // Initialize with the existing funnel data
+          setFunnelData(data.funnel);
+        } catch (error) {
+          console.error('Failed to fetch funnel date range:', error);
+          setFunnelError(error instanceof Error ? error.message : 'Failed to load date range');
+          // Fallback to existing funnel data
+          setFunnelData(data.funnel || []);
+        }
+      }
+    };
+
+    initializeFunnelDateRange();
+  }, [data.funnel]);
+
+  // Fetch funnel data with date filtering
+  const fetchFunnelData = useCallback(async (startDate: string, endDate: string) => {
+    setIsFunnelLoading(true);
+    setFunnelError(null);
+
+    try {
+      const filteredData = await getFunnelData(startDate, endDate);
+      setFunnelData(filteredData);
+    } catch (error) {
+      console.error('Failed to fetch filtered funnel data:', error);
+      setFunnelError(error instanceof Error ? error.message : 'Failed to load funnel data');
+    } finally {
+      setIsFunnelLoading(false);
+    }
+  }, []);
+
+  // Handle date range changes
+  const handleFunnelDateChange = useCallback((startDate: string, endDate: string) => {
+    setFunnelStartDate(startDate);
+    setFunnelEndDate(endDate);
+    fetchFunnelData(startDate, endDate);
+  }, [fetchFunnelData]);
+
+  // Reset to full date range
+  const handleFunnelDateReset = useCallback(() => {
+    if (funnelDateRange) {
+      setFunnelStartDate(funnelDateRange.minDate);
+      setFunnelEndDate(funnelDateRange.maxDate);
+      fetchFunnelData(funnelDateRange.minDate, funnelDateRange.maxDate);
+    }
+  }, [funnelDateRange, fetchFunnelData]);
+
   // Generate CSV content from table data
   const generateTableCSV = (data: typeof simulatedData): string => {
     const headers = ['Date', 'Revenue', 'Type'];
@@ -219,31 +284,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   const handleSaveClick = async () => {
     setIsSaving(true);
     setExportError(null);
-    
+
     try {
       // Simple prompt for demo; in production use a modal
       const scenarioName = window.prompt("Enter a name for this forecast scenario:", `Forecast ${new Date().toLocaleDateString()}`);
-      
+
       if (scenarioName) {
-        // Export to PDF
+        // Export to PDF using exportDashboardToPDF
         setIsExportingPDF(true);
-        
-        await exportForecastToPDF(
-          'forecast-overview-panel',
+
+        await exportDashboardToPDF(
           data,
-          {
-            filename: `forecast-analysis-${scenarioName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`,
-            includeMetadata: true,
-            user: {
-              name: user.name,
-              email: user.email
-            },
-            scenarioName: scenarioName
-          }
+          simulatedData,
+          forecastMetrics,
+          user,
+          scenarioName,
+          'JAUNTY'
         );
-        
+
         setIsExportingPDF(false);
-        
+
         // Also call the original save handler if needed
         onSave(scenarioName);
       }
@@ -342,7 +402,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
               <h3 className="text-lg font-semibold text-slate-900 mb-6">Forecast Overview</h3>
               
               {/* Stats Cards */}
-              <div className="space-y-4 mb-8">
+              <div id="forecast-stats-cards" className="space-y-4 mb-8">
                 {/* Primary Card: 12 Month Forecast */}
                 <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
                   <div className="flex items-center space-x-2 mb-4">
@@ -421,7 +481,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
               </div>
 
               {/* Revenue Chart */}
-              <RevenueChart data={simulatedData} />
+              <div id="revenue-chart-container">
+                <RevenueChart data={simulatedData} />
+              </div>
 
               {/* Data Table */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -598,7 +660,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
         </div>
       ) : (
         isAdmin && (
-          <div className="space-y-8">
+          <div id="insights-section" className="space-y-8">
             {/* Top Row: Key Drivers and Strategic Analysis */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
@@ -635,8 +697,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
             {/* Bottom Row: Pipeline Funnel */}
             {data.funnel && data.funnel.length > 0 && (
-              <div>
-                <FunnelChart data={data.funnel} showLost={false} showCancelled={false} />
+              <div id="funnel-chart-container" className="space-y-0">
+                {/* Funnel Error Message */}
+                {funnelError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start mb-4">
+                    <AlertCircle className="w-5 h-5 text-red-600 mr-3 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-red-800 mb-1">Funnel Data Error</h4>
+                      <p className="text-sm text-red-700">{funnelError}</p>
+                      <button
+                        onClick={() => setFunnelError(null)}
+                        className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Funnel Chart with filtered data and integrated date filter */}
+                <FunnelChart
+                  data={funnelData}
+                  showLost={false}
+                  showCancelled={false}
+                  dateFilter={funnelDateRange ? {
+                    startDate: funnelStartDate,
+                    endDate: funnelEndDate,
+                    minDate: funnelDateRange.minDate,
+                    maxDate: funnelDateRange.maxDate,
+                    onDateChange: handleFunnelDateChange,
+                    onReset: handleFunnelDateReset,
+                    isLoading: isFunnelLoading
+                  } : undefined}
+                />
               </div>
             )}
           </div>

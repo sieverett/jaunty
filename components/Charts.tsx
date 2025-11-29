@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   AreaChart,
   Area,
@@ -19,6 +19,17 @@ import { DataPoint, FunnelData } from '../types';
 
 interface RevenueChartProps {
   data: DataPoint[];
+}
+
+interface DateRangeSelectorProps {
+  startDate: string;
+  endDate: string;
+  minDate?: string;
+  maxDate?: string;
+  onDateChange: (startDate: string, endDate: string) => void;
+  onReset: () => void;
+  isLoading?: boolean;
+  disabled?: boolean;
 }
 
 // Custom tooltip component with enhanced information
@@ -330,10 +341,135 @@ export const ComparisonChart: React.FC<RevenueChartProps> = ({ data }) => {
     )
 }
 
+export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
+  startDate,
+  endDate,
+  minDate,
+  maxDate,
+  onDateChange,
+  onReset,
+  isLoading = false,
+  disabled = false
+}) => {
+  // Generate array of dates between min and max for the brush
+  const dateRange = useMemo(() => {
+    if (!minDate || !maxDate) return [];
+    const dates: { date: string; value: number }[] = [];
+    const start = new Date(minDate);
+    const end = new Date(maxDate);
+    const current = new Date(start);
+    let index = 0;
+
+    while (current <= end) {
+      dates.push({
+        date: current.toISOString().split('T')[0],
+        value: 1 // Constant value for visual representation
+      });
+      current.setDate(current.getDate() + 1);
+      index++;
+    }
+    return dates;
+  }, [minDate, maxDate]);
+
+  // Find indices for current selection
+  const startIndex = useMemo(() => {
+    const idx = dateRange.findIndex(d => d.date === startDate);
+    return idx >= 0 ? idx : 0;
+  }, [dateRange, startDate]);
+
+  const endIndex = useMemo(() => {
+    const idx = dateRange.findIndex(d => d.date === endDate);
+    return idx >= 0 ? idx : dateRange.length - 1;
+  }, [dateRange, endDate]);
+
+  // Handle brush change
+  const handleBrushChange = useCallback((brushData: { startIndex?: number; endIndex?: number } | null) => {
+    if (disabled || isLoading) return;
+    if (brushData && typeof brushData.startIndex === 'number' && typeof brushData.endIndex === 'number') {
+      const newStartDate = dateRange[brushData.startIndex]?.date;
+      const newEndDate = dateRange[brushData.endIndex]?.date;
+      if (newStartDate && newEndDate) {
+        onDateChange(newStartDate, newEndDate);
+      }
+    }
+  }, [dateRange, onDateChange, disabled, isLoading]);
+
+  // Format date for display
+  const formatDisplayDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  if (dateRange.length === 0) {
+    return null;
+  }
+
+  // Compact date format
+  const formatCompactDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  };
+
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      {/* Date range display */}
+      <span className="text-xs text-slate-500">Filter:</span>
+      <span className="text-xs font-medium text-slate-700">{formatCompactDate(startDate)}</span>
+      <span className="text-xs text-slate-400">→</span>
+      <span className="text-xs font-medium text-slate-700">{formatCompactDate(endDate)}</span>
+
+      {/* Compact Brush slider */}
+      <div className="flex-1 h-6 max-w-xs">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={dateRange} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <Brush
+              dataKey="date"
+              height={24}
+              stroke="#3b82f6"
+              fill="#dbeafe"
+              startIndex={startIndex}
+              endIndex={endIndex}
+              onChange={handleBrushChange}
+              tickFormatter={() => ''}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Reset button */}
+      <button
+        onClick={onReset}
+        disabled={disabled || isLoading}
+        className="text-xs text-slate-500 hover:text-slate-700 disabled:opacity-50"
+      >
+        Reset
+      </button>
+
+      {isLoading && (
+        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-slate-400"></div>
+      )}
+    </div>
+  );
+};
+
 interface FunnelChartProps {
   data: FunnelData[];
   showLost?: boolean;
   showCancelled?: boolean;
+  // Optional date filter props
+  dateFilter?: {
+    startDate: string;
+    endDate: string;
+    minDate: string;
+    maxDate: string;
+    onDateChange: (startDate: string, endDate: string) => void;
+    onReset: () => void;
+    isLoading?: boolean;
+  };
 }
 
 // Custom tooltip for funnel chart
@@ -378,7 +514,7 @@ const FunnelTooltip = ({ active, payload }: any) => {
   );
 };
 
-export const FunnelChart: React.FC<FunnelChartProps> = ({ data, showLost = false, showCancelled = false }) => {
+export const FunnelChart: React.FC<FunnelChartProps> = ({ data, showLost = false, showCancelled = false, dateFilter }) => {
   // Define the correct pipeline stage order (from inquiry to completed)
   const stageOrder: { [key: string]: number } = {
     'inquiry': 1,
@@ -418,7 +554,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, showLost = false
 
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-800">Pipeline Funnel</h3>
         <div className="flex items-center space-x-4 text-xs">
           {showLost && (
@@ -435,6 +571,20 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, showLost = false
           )}
         </div>
       </div>
+
+      {/* Inline Date Filter */}
+      {dateFilter && (
+        <DateRangeSelector
+          startDate={dateFilter.startDate}
+          endDate={dateFilter.endDate}
+          minDate={dateFilter.minDate}
+          maxDate={dateFilter.maxDate}
+          onDateChange={dateFilter.onDateChange}
+          onReset={dateFilter.onReset}
+          isLoading={dateFilter.isLoading}
+          disabled={dateFilter.isLoading}
+        />
+      )}
 
       {/* Column Headers */}
       <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200">

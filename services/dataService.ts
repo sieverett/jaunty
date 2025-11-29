@@ -10,7 +10,7 @@
  * - Mock data has been removed - use real backend API only
  */
 
-import { ForecastResponse } from '../types';
+import { ForecastResponse, FunnelData } from '../types';
 
 // API_URL: Default to localhost if not explicitly set
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -117,5 +117,87 @@ async function fetchFromBackendAPI(file: File): Promise<ForecastResponse> {
  */
 export function getDataSource(): 'api' {
   return 'api';
+}
+
+/**
+ * Get funnel data with optional date filtering
+ */
+export async function getFunnelData(startDate?: string, endDate?: string): Promise<FunnelData[]> {
+  if (!API_URL) {
+    throw new Error('API URL not configured');
+  }
+
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const queryString = params.toString();
+    const url = `${API_URL}/funnel${queryString ? `?${queryString}` : ''}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      let errorMessage = `API error: ${response.status}`;
+      try {
+        const errorBody = await response.json();
+        errorMessage = errorBody.detail || errorBody.message || errorMessage;
+      } catch {
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    // Backend returns { funnel: [...] }, extract the array
+    return (data.funnel || []) as FunnelData[];
+  } catch (error) {
+    console.error('[API] Error fetching funnel data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get available date range for funnel data
+ */
+export async function getFunnelDateRange(): Promise<{ minDate: string; maxDate: string }> {
+  if (!API_URL) {
+    throw new Error('API URL not configured');
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/funnel/date-range`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      let errorMessage = `API error: ${response.status}`;
+      try {
+        const errorBody = await response.json();
+        errorMessage = errorBody.detail || errorBody.message || errorMessage;
+      } catch {
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    // Map snake_case from backend to camelCase for frontend
+    return {
+      minDate: data.min_date,
+      maxDate: data.max_date
+    };
+  } catch (error) {
+    console.error('[API] Error fetching funnel date range:', error);
+    throw error;
+  }
 }
 

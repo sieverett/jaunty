@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict, Literal
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -453,17 +453,19 @@ def generate_key_drivers_from_stats(dataset_stats: Dict) -> List[str]:
     return drivers[:5]  # Limit to 5 drivers
 
 
-def generate_funnel_data(pipeline: EnsemblePipeline, forecast_date: Optional[str] = None) -> Optional[List[dict]]:
+def generate_funnel_data(pipeline: EnsemblePipeline, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Optional[List[dict]]:
     """
     Generate funnel data from pipeline data.
-    
+
     Parameters:
     -----------
     pipeline : EnsemblePipeline
         Pipeline instance with loaded data
-    forecast_date : str, optional
-        Forecast reference date for filtering active pipeline (default: today)
-    
+    start_date : str, optional
+        Start date for filtering (YYYY-MM-DD). If not provided, no lower bound.
+    end_date : str, optional
+        End date for filtering (YYYY-MM-DD). If not provided, uses today.
+
     Returns:
     --------
     list or None
@@ -472,41 +474,25 @@ def generate_funnel_data(pipeline: EnsemblePipeline, forecast_date: Optional[str
     try:
         if pipeline.data is None or pipeline.data.empty:
             return None
-        
+
         # For funnel visualization, we want TRUE active pipeline stages only
         # (not future completed trips that are reclassified for forecasting)
         # So we filter directly from pipeline.data instead of using get_active_pipeline()
         data = pipeline.data.copy()
-        
+
         if 'current_stage' not in data.columns:
             return None
-        
-        # Filter to only true active pipeline stages (exclude completed, lost, cancelled)
-        # Also filter by inquiry_date to match forecast_date if provided
-        active_stages = ['inquiry', 'quote_sent', 'booked', 'final_payment']
-        
-        if forecast_date is None:
-            forecast_date = datetime.now()
+
+        # Parse dates
+        if end_date is None:
+            end_date_parsed = datetime.now()
         else:
-            forecast_date = pd.to_datetime(forecast_date)
-        
-        # Get true active pipeline (not including future completed trips)
-        # Filter by inquiry_date if available, otherwise just filter by stage
-        if 'inquiry_date' in data.columns:
-            funnel_data_filtered = data[
-                (pd.to_datetime(data['inquiry_date'], errors='coerce') <= forecast_date) &
-                (data['current_stage'].isin(active_stages))
-            ].copy()
-        else:
-            # Fallback: just filter by stage if inquiry_date not available
-            funnel_data_filtered = data[data['current_stage'].isin(active_stages)].copy()
-        
-        if funnel_data_filtered.empty:
-            return None
-        
-        # Define stage order - exclude 'completed' as it's historical data, not current pipeline
-        # A funnel should show the CURRENT active pipeline state
-        stage_order = ['inquiry', 'quote_sent', 'booked', 'final_payment']
+            end_date_parsed = pd.to_datetime(end_date)
+
+        start_date_parsed = pd.to_datetime(start_date) if start_date else None
+
+        # Define stage configurations
+        stage_order = ['inquiry', 'quote_sent', 'booked', 'final_payment', 'completed']
         stage_colors = {
             'inquiry': '#0ea5e9',
             'quote_sent': '#3b82f6',
@@ -514,24 +500,96 @@ def generate_funnel_data(pipeline: EnsemblePipeline, forecast_date: Optional[str
             'final_payment': '#10b981',
             'completed': '#059669'
         }
+
+        # Map stages to their corresponding date columns
+        stage_date_columns = {
+            'inquiry': 'inquiry_date',
+            'quote_sent': 'quote_date',
+            'booked': 'booking_date',
+            'final_payment': 'final_payment_date',
+            'completed': 'trip_date'
+        }
+
+        # When date range is specified, use COHORT-based filtering:
+        # Find leads that INQUIRED during the date range, then count how many progressed to each stage
+        # This shows true funnel progression for leads that entered during the selected period
+        if start_date_parsed is not None:
+            # First, find the cohort: leads with inquiry_date in the selected range
+            if 'inquiry_date' not in data.columns:
+                return None
+
+            inquiry_dates = pd.to_datetime(data['inquiry_date'], errors='coerce')
+            cohort_mask = (inquiry_dates >= start_date_parsed) & (inquiry_dates <= end_date_parsed)
+            cohort = data[cohort_mask].copy()
+
+            if cohort.empty:
+                return None
+
+            # Count how many in the cohort reached each stage (have a non-null date for that stage)
+            stage_counts = {}
+            stage_revenue = {}
+
+            for stage in stage_order:
+                date_col = stage_date_columns.get(stage)
+                if date_col and date_col in cohort.columns:
+                    # Count leads that have a valid date for this stage (meaning they reached it)
+                    stage_dates = pd.to_datetime(cohort[date_col], errors='coerce')
+                    reached_stage = stage_dates.notna()
+                    stage_counts[stage] = int(reached_stage.sum())
+
+                    # Calculate revenue for leads in cohort that reached this stage
+                    if 'trip_price' in cohort.columns:
+                        stage_revenue[stage] = float(cohort.loc[reached_stage, 'trip_price'].sum())
+                    else:
+                        stage_revenue[stage] = 0
+                else:
+                    stage_counts[stage] = 0
+                    stage_revenue[stage] = 0
+
+            # Check if we have any data
+            if all(count == 0 for count in stage_counts.values()):
+                return None
+
+        else:
+            # No date range - show current active pipeline state (original behavior)
+            active_stages = ['inquiry', 'quote_sent', 'booked', 'final_payment']
+
+            if 'inquiry_date' in data.columns:
+                inquiry_dates = pd.to_datetime(data['inquiry_date'], errors='coerce')
+                funnel_data_filtered = data[
+                    (inquiry_dates <= end_date_parsed) &
+                    (data['current_stage'].isin(active_stages))
+                ].copy()
+            else:
+                funnel_data_filtered = data[data['current_stage'].isin(active_stages)].copy()
+
+            if funnel_data_filtered.empty:
+                return None
+
+            stage_counts = funnel_data_filtered['current_stage'].value_counts().to_dict()
+            stage_revenue = {}
+            for stage in active_stages:
+                if 'trip_price' in funnel_data_filtered.columns:
+                    stage_data = funnel_data_filtered[funnel_data_filtered['current_stage'] == stage]
+                    stage_revenue[stage] = float(stage_data['trip_price'].sum()) if not stage_data.empty else 0
+                else:
+                    stage_revenue[stage] = 0
+
+            # Use only active stages for non-date-filtered view
+            stage_order = active_stages
         
-        # Count leads per stage from filtered data
-        stage_counts = funnel_data_filtered['current_stage'].value_counts().to_dict()
-        
-        # Calculate conversion rates
+        # Calculate conversion rates and build funnel data
         funnel_data = []
         total_inquiries = stage_counts.get('inquiry', 0)
-        
+
         for i, stage in enumerate(stage_order):
             count = stage_counts.get(stage, 0)
-            
+
             # Calculate conversion rate FROM previous stage TO current stage
-            # This shows what % of the previous stage converted to this stage
             if i > 0:
                 prev_stage = stage_order[i - 1]
                 prev_count = stage_counts.get(prev_stage, 0)
                 if prev_count > 0:
-                    # Conversion rate: what % of previous stage converted to this stage
                     conversion_rate = (count / prev_count) * 100
                     drop_off_rate = 100 - conversion_rate
                 else:
@@ -541,38 +599,14 @@ def generate_funnel_data(pipeline: EnsemblePipeline, forecast_date: Optional[str
                 # First stage (inquiry) has no previous stage
                 conversion_rate = None
                 drop_off_rate = None
-            
-            # Calculate revenue potential (use filtered data for consistency)
-            if 'trip_price' in funnel_data_filtered.columns:
-                stage_data = funnel_data_filtered[funnel_data_filtered['current_stage'] == stage]
-                revenue_potential = float(stage_data['trip_price'].sum()) if not stage_data.empty else 0
-            else:
-                revenue_potential = 0
-            
-            # Calculate average days in stage (use filtered data)
+
+            # Get revenue from pre-calculated stage_revenue dict
+            revenue_potential = stage_revenue.get(stage, 0)
+
+            # Skip avgDaysInStage calculation for date-filtered view (too complex)
+            # Only calculate for non-date-filtered view where we have funnel_data_filtered
             avg_days = 0
-            if stage == 'inquiry' and 'inquiry_date' in funnel_data_filtered.columns and 'quote_date' in funnel_data_filtered.columns:
-                stage_data = funnel_data_filtered[funnel_data_filtered['current_stage'] == stage]
-                if not stage_data.empty:
-                    dates = pd.to_datetime(stage_data['quote_date'], errors='coerce') - pd.to_datetime(stage_data['inquiry_date'], errors='coerce')
-                    valid_dates = dates[dates.notna()]
-                    if len(valid_dates) > 0:
-                        avg_days = valid_dates.mean().days
-            elif stage == 'quote_sent' and 'quote_date' in funnel_data_filtered.columns and 'booking_date' in funnel_data_filtered.columns:
-                stage_data = funnel_data_filtered[funnel_data_filtered['current_stage'] == stage]
-                if not stage_data.empty:
-                    dates = pd.to_datetime(stage_data['booking_date'], errors='coerce') - pd.to_datetime(stage_data['quote_date'], errors='coerce')
-                    valid_dates = dates[dates.notna()]
-                    if len(valid_dates) > 0:
-                        avg_days = valid_dates.mean().days
-            elif stage == 'booked' and 'booking_date' in funnel_data_filtered.columns and 'final_payment_date' in funnel_data_filtered.columns:
-                stage_data = funnel_data_filtered[funnel_data_filtered['current_stage'] == stage]
-                if not stage_data.empty:
-                    dates = pd.to_datetime(stage_data['final_payment_date'], errors='coerce') - pd.to_datetime(stage_data['booking_date'], errors='coerce')
-                    valid_dates = dates[dates.notna()]
-                    if len(valid_dates) > 0:
-                        avg_days = valid_dates.mean().days
-            
+
             funnel_data.append({
                 "stage": stage,
                 "count": int(count),
@@ -582,7 +616,7 @@ def generate_funnel_data(pipeline: EnsemblePipeline, forecast_date: Optional[str
                 "avgDaysInStage": round(avg_days, 1) if avg_days > 0 else None,
                 "color": stage_colors.get(stage, '#6b7280')
             })
-        
+
         return funnel_data if funnel_data else None
         
     except Exception as e:
@@ -1228,9 +1262,9 @@ async def get_dashboard_forecast(
             
             # Get suggested parameters
             suggested_parameters = get_suggested_parameters()
-            
-            # Generate funnel data (use same forecast_date for consistency)
-            funnel_data = generate_funnel_data(pipeline, forecast_date=forecast_date)
+
+            # Generate funnel data (use end_date instead of forecast_date for backward compatibility)
+            funnel_data = generate_funnel_data(pipeline, end_date=forecast_date)
             
             return DashboardForecastResponse(
                 historical=historical_data,
@@ -1502,6 +1536,133 @@ async def generate_report(
         raise HTTPException(
             status_code=500,
             detail=f"Report generation failed: {str(e)}"
+        )
+
+
+@app.get("/funnel")
+async def get_funnel_data(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)")
+):
+    """
+    Get funnel data with optional date range filtering.
+
+    This endpoint returns funnel data from the currently loaded pipeline
+    without requiring file re-upload. Allows filtering by date range.
+
+    Parameters:
+    -----------
+    start_date : str, optional
+        Start date for filtering inquiries (YYYY-MM-DD)
+    end_date : str, optional
+        End date for filtering inquiries (YYYY-MM-DD)
+
+    Returns:
+    --------
+    dict
+        Funnel data with stages, conversion rates, and revenue potential
+    """
+    global pipeline
+
+    if pipeline is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Pipeline not initialized. Please check server logs."
+        )
+
+    if pipeline.data is None or pipeline.data.empty:
+        raise HTTPException(
+            status_code=400,
+            detail="No data loaded. Please upload a file using /dashboard/forecast or /upload first."
+        )
+
+    # Validate date formats if provided
+    if start_date:
+        try:
+            pd.to_datetime(start_date)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid start_date format. Use YYYY-MM-DD."
+            )
+
+    if end_date:
+        try:
+            pd.to_datetime(end_date)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid end_date format. Use YYYY-MM-DD."
+            )
+
+    # Generate funnel data
+    funnel_data = generate_funnel_data(pipeline, start_date=start_date, end_date=end_date)
+
+    if funnel_data is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No funnel data available for the specified date range."
+        )
+
+    return {"funnel": funnel_data}
+
+
+@app.get("/funnel/date-range")
+async def get_funnel_date_range():
+    """
+    Get the available date range from uploaded data.
+
+    Returns the minimum and maximum inquiry_date from the pipeline data,
+    which can be used to set bounds for date range pickers.
+
+    Returns:
+    --------
+    dict
+        Dictionary with min_date and max_date (YYYY-MM-DD format)
+    """
+    global pipeline
+
+    if pipeline is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Pipeline not initialized. Please check server logs."
+        )
+
+    if pipeline.data is None or pipeline.data.empty:
+        raise HTTPException(
+            status_code=400,
+            detail="No data loaded. Please upload a file using /dashboard/forecast or /upload first."
+        )
+
+    if 'inquiry_date' not in pipeline.data.columns:
+        raise HTTPException(
+            status_code=400,
+            detail="Data does not contain inquiry_date column."
+        )
+
+    try:
+        # Get min and max inquiry dates
+        inquiry_dates = pd.to_datetime(pipeline.data['inquiry_date'], errors='coerce')
+        valid_dates = inquiry_dates[inquiry_dates.notna()]
+
+        if len(valid_dates) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No valid inquiry dates found in data."
+            )
+
+        min_date = valid_dates.min().strftime('%Y-%m-%d')
+        max_date = valid_dates.max().strftime('%Y-%m-%d')
+
+        return {
+            "min_date": min_date,
+            "max_date": max_date
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve date range: {str(e)}"
         )
 
 
