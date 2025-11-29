@@ -201,3 +201,60 @@ export async function getFunnelDateRange(): Promise<{ minDate: string; maxDate: 
   }
 }
 
+/**
+ * Generate full report from uploaded file
+ */
+export async function generateFullReport(file: File): Promise<any> {
+  if (!API_URL) {
+    throw new Error('API URL not configured');
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '120000', 10); // 2 minutes for report generation
+
+  // Create abort controller for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, API_TIMEOUT);
+
+  try {
+    const response = await fetch(`${API_URL}/report`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to generate report: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorData.message || errorMessage;
+      } catch {
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Report generation timed out. Please try again or use a smaller dataset.');
+      }
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('ERR_')) {
+        throw new Error(`Cannot connect to backend API at ${API_URL}. Make sure the backend server is running.`);
+      }
+      throw error;
+    }
+
+    throw new Error(`Failed to generate report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+

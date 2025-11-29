@@ -31,7 +31,7 @@ class ForecastInference:
     def __init__(self, model_dir: str = "model/artifacts"):
         """
         Initialize inference engine.
-        
+
         Parameters:
         -----------
         model_dir : str
@@ -43,6 +43,7 @@ class ForecastInference:
         self.xgboost_model = None
         self.label_encoders = {}
         self.feature_names = []
+        self.stage_conversion_rates = None  # Will be loaded from artifacts
         self.ensemble_weights = {
             'prophet': 0.4,
             'xgboost': 0.3,
@@ -51,22 +52,51 @@ class ForecastInference:
     
     def load_models(self) -> None:
         """Load trained models from disk"""
-        
+
         # Use the model_dir (should already be resolved by pipeline)
         abs_model_dir = os.path.abspath(self.model_dir)
-        
+
         print(f"Loading models from: {abs_model_dir}")
-        
+
         # Check if directory exists
         if not os.path.exists(abs_model_dir):
             print(f"⚠ Model directory does not exist: {abs_model_dir}")
             print("   Models need to be trained first using pipeline.train()")
             return
-        
+
         # List files in directory
         files_in_dir = os.listdir(abs_model_dir)
         print(f"   Files found: {files_in_dir}")
-        
+
+        # Load stage conversion rates
+        rates_path = os.path.join(abs_model_dir, 'stage_conversion_rates.pkl')
+        if os.path.exists(rates_path):
+            try:
+                with open(rates_path, 'rb') as f:
+                    self.stage_conversion_rates = pickle.load(f)
+
+                # Check if we have the new segmented format
+                if isinstance(self.stage_conversion_rates, dict) and 'segmented_rates' in self.stage_conversion_rates:
+                    print("✓ Loaded segmented stage conversion rates")
+                    flat_rates = self.stage_conversion_rates['flat_rates']
+                    segmented_rates = self.stage_conversion_rates['segmented_rates']
+                    print("\nFlat rates:")
+                    for stage, rate in flat_rates.items():
+                        print(f"   {stage}: {rate:.3f}")
+                    print(f"\nSegmented rates: {len(segmented_rates)} segments loaded")
+                    print(f"   Min segment size: {self.stage_conversion_rates.get('min_segment_size', 'N/A')}")
+                else:
+                    # Old format - just flat rates
+                    print("✓ Loaded empirical stage conversion rates (flat)")
+                    for stage, rate in self.stage_conversion_rates.items():
+                        print(f"   {stage}: {rate:.3f}")
+            except Exception as e:
+                print(f"⚠ Could not load stage conversion rates: {e}")
+                print("   Will use hardcoded fallback rates")
+        else:
+            print("⚠ Stage conversion rates file not found")
+            print("   Will use hardcoded fallback rates")
+
         # Load Prophet model
         prophet_path = os.path.join(abs_model_dir, 'prophet_model.pkl')
         if os.path.exists(prophet_path) and PROPHET_AVAILABLE:
@@ -80,12 +110,12 @@ class ForecastInference:
             print("⚠ Prophet model file not found")
         elif not PROPHET_AVAILABLE:
             print("⚠ Prophet not installed")
-        
+
         # Load XGBoost model
         xgb_path = os.path.join(abs_model_dir, 'xgboost_model.json')
         encoders_path = os.path.join(abs_model_dir, 'label_encoders.pkl')
         features_path = os.path.join(abs_model_dir, 'feature_names.pkl')
-        
+
         # Check which files exist
         missing_files = []
         if not os.path.exists(xgb_path):
@@ -94,7 +124,7 @@ class ForecastInference:
             missing_files.append('label_encoders.pkl')
         if not os.path.exists(features_path):
             missing_files.append('feature_names.pkl')
-        
+
         if missing_files:
             print(f"⚠ XGBoost model files missing: {missing_files}")
             print("   XGBoost model needs to be trained first")
@@ -102,13 +132,13 @@ class ForecastInference:
             try:
                 self.xgboost_model = xgb.XGBClassifier()
                 self.xgboost_model.load_model(xgb_path)
-                
+
                 with open(encoders_path, 'rb') as f:
                     self.label_encoders = pickle.load(f)
-                
+
                 with open(features_path, 'rb') as f:
                     self.feature_names = pickle.load(f)
-                
+
                 print("✓ Loaded XGBoost model")
             except Exception as e:
                 print(f"⚠ Could not load XGBoost model: {e}")
@@ -224,13 +254,13 @@ class ForecastInference:
     
     def forecast_pipeline(self, active_pipeline: pd.DataFrame) -> Dict:
         """
-        Generate simple pipeline-based forecast.
-        
+        Generate simple pipeline-based forecast using segmented conversion rates.
+
         Parameters:
         -----------
         active_pipeline : pd.DataFrame
             Active leads in pipeline
-            
+
         Returns:
         --------
         dict
@@ -238,31 +268,92 @@ class ForecastInference:
         """
         if active_pipeline.empty:
             return {'forecast': 0, 'details': {}}
-        
-        # Stage weights (conversion probabilities)
-        stage_weights = {
-            'inquiry': 0.15,
-            'quote_sent': 0.35,
-            'booked': 0.90,
-            'final_payment': 0.98
-        }
-        
-        # Calculate weighted revenue
-        active_pipeline = active_pipeline.copy()
-        active_pipeline['weighted_revenue'] = active_pipeline.apply(
-            lambda row: row['trip_price'] * stage_weights.get(row['current_stage'], 0),
-            axis=1
+
+        # Check if we have segmented rates loaded
+        has_segmented = (
+            self.stage_conversion_rates is not None and
+            isinstance(self.stage_conversion_rates, dict) and
+            'segmented_rates' in self.stage_conversion_rates
         )
-        
+
+        # Use empirical stage conversion rates if available, otherwise fallback to hardcoded
+        if has_segmented:
+            flat_rates = self.stage_conversion_rates['flat_rates']
+            segmented_rates = self.stage_conversion_rates['segmented_rates']
+            min_segment_size = self.stage_conversion_rates.get('min_segment_size', 20)
+            rates_source = 'segmented'
+        elif self.stage_conversion_rates is not None:
+            # Backwards compatibility: old format was just a dict of flat rates
+            flat_rates = self.stage_conversion_rates.copy()
+            segmented_rates = {}
+            min_segment_size = 20
+            rates_source = 'empirical'
+        else:
+            # Fallback to hardcoded rates
+            flat_rates = {
+                'inquiry': 0.15,
+                'quote_sent': 0.35,
+                'booked': 0.90,
+                'final_payment': 0.98
+            }
+            segmented_rates = {}
+            min_segment_size = 20
+            rates_source = 'hardcoded'
+
+        # Calculate weighted revenue using segmented rates where available
+        active_pipeline = active_pipeline.copy()
+
+        # Track which rates were used for transparency
+        segment_usage = {'segmented': 0, 'flat': 0, 'missing': 0}
+
+        def get_conversion_rate(row):
+            """Get conversion rate for a lead, using segmented rate if available"""
+            stage = row['current_stage']
+
+            # Try segmented rate first (if we have lead_source and is_repeat_customer)
+            if segmented_rates and 'lead_source' in row and 'is_repeat_customer' in row:
+                segment_key = (stage, row['lead_source'], int(row['is_repeat_customer']))
+                if segment_key in segmented_rates:
+                    segment_usage['segmented'] += 1
+                    return segmented_rates[segment_key]
+
+            # Fall back to flat rate
+            if stage in flat_rates:
+                segment_usage['flat'] += 1
+                return flat_rates[stage]
+
+            # No rate found (shouldn't happen for valid stages)
+            segment_usage['missing'] += 1
+            return 0.0
+
+        active_pipeline['conversion_rate'] = active_pipeline.apply(get_conversion_rate, axis=1)
+        active_pipeline['weighted_revenue'] = active_pipeline['trip_price'] * active_pipeline['conversion_rate']
+
         total_forecast = active_pipeline['weighted_revenue'].sum()
-        
+
+        # Build detailed response
+        details = {
+            'pipeline_count': len(active_pipeline),
+            'total_pipeline_value': active_pipeline['trip_price'].sum(),
+            'by_stage': active_pipeline.groupby('current_stage')['trip_price'].sum().to_dict(),
+            'rates_source': rates_source,
+            'flat_rates': flat_rates,
+            'segment_usage': segment_usage
+        }
+
+        # Add segmented breakdown if available
+        if segmented_rates and 'lead_source' in active_pipeline.columns:
+            details['by_segment'] = active_pipeline.groupby(
+                ['current_stage', 'lead_source', 'is_repeat_customer']
+            ).agg({
+                'trip_price': 'sum',
+                'weighted_revenue': 'sum',
+                'lead_id': 'count'
+            }).to_dict()
+
         return {
             'forecast': total_forecast,
-            'details': {
-                'pipeline_count': len(active_pipeline),
-                'total_pipeline_value': active_pipeline['trip_price'].sum(),
-                'by_stage': active_pipeline.groupby('current_stage')['trip_price'].sum().to_dict()
-            }
+            'details': details
         }
     
     def generate_12_month_forecast(

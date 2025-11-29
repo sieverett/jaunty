@@ -405,17 +405,182 @@ class ModelTrainer:
         
         return X, y
     
+    def calculate_stage_conversion_rates(self, df: pd.DataFrame, min_segment_size: int = 20) -> Dict:
+        """
+        Calculate empirical conversion rates from historical data.
+
+        Calculates both:
+        1. Flat rates per stage (for fallback)
+        2. Segmented rates by (stage, lead_source, is_repeat_customer)
+
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            Full dataset with leads
+        min_segment_size : int
+            Minimum number of observations required for a segment to be used.
+            Segments with fewer observations fall back to flat rate.
+
+        Returns:
+        --------
+        dict
+            Dictionary with:
+            - 'flat_rates': {stage: rate}
+            - 'segmented_rates': {(stage, lead_source, is_repeat): rate}
+            - 'segment_counts': {(stage, lead_source, is_repeat): count}
+            - 'min_segment_size': threshold used
+        """
+        print("\nCalculating empirical stage conversion rates...")
+
+        # Define the stages we care about for forecasting
+        forecast_stages = ['inquiry', 'quote_sent', 'booked', 'final_payment']
+
+        # Calculate flat rates (unchanged logic)
+        flat_rates = {}
+
+        for stage in forecast_stages:
+            if stage == 'inquiry':
+                # All leads start at inquiry
+                total_at_stage = len(df)
+                completed_count = len(df[df['current_stage'] == 'completed'])
+            elif stage == 'quote_sent':
+                # Leads that reached quote_sent or beyond
+                total_at_stage = len(df[
+                    df['current_stage'].isin(['quote_sent', 'booked', 'final_payment', 'completed'])
+                ])
+                completed_count = len(df[
+                    (df['current_stage'] == 'completed') &
+                    (df['quote_date'].notna())
+                ])
+            elif stage == 'booked':
+                # Leads that reached booked or beyond
+                total_at_stage = len(df[
+                    df['current_stage'].isin(['booked', 'final_payment', 'completed'])
+                ])
+                completed_count = len(df[
+                    (df['current_stage'] == 'completed') &
+                    (df['booking_date'].notna())
+                ])
+            elif stage == 'final_payment':
+                # Leads that reached final_payment or completed
+                total_at_stage = len(df[
+                    df['current_stage'].isin(['final_payment', 'completed'])
+                ])
+                completed_count = len(df[
+                    (df['current_stage'] == 'completed') &
+                    (df['final_payment_date'].notna())
+                ])
+
+            # Calculate conversion rate
+            if total_at_stage > 0:
+                rate = completed_count / total_at_stage
+            else:
+                rate = 0.0
+
+            flat_rates[stage] = rate
+            print(f"  {stage}: {rate:.3f} ({completed_count}/{total_at_stage} converted)")
+
+        # Calculate segmented rates
+        print(f"\nCalculating segmented rates (min_segment_size={min_segment_size})...")
+        segmented_rates = {}
+        segment_counts = {}
+
+        # Ensure required columns exist
+        if 'lead_source' not in df.columns or 'is_repeat_customer' not in df.columns:
+            print("  Warning: lead_source or is_repeat_customer column missing. Skipping segmentation.")
+            return {
+                'flat_rates': flat_rates,
+                'segmented_rates': {},
+                'segment_counts': {},
+                'min_segment_size': min_segment_size
+            }
+
+        for stage in forecast_stages:
+            # Get leads at this stage or beyond (stage-specific logic)
+            if stage == 'inquiry':
+                stage_df = df.copy()
+            elif stage == 'quote_sent':
+                stage_df = df[
+                    df['current_stage'].isin(['quote_sent', 'booked', 'final_payment', 'completed'])
+                ].copy()
+            elif stage == 'booked':
+                stage_df = df[
+                    df['current_stage'].isin(['booked', 'final_payment', 'completed'])
+                ].copy()
+            elif stage == 'final_payment':
+                stage_df = df[
+                    df['current_stage'].isin(['final_payment', 'completed'])
+                ].copy()
+
+            if stage_df.empty:
+                continue
+
+            # Group by lead_source and is_repeat_customer
+            for lead_source in df['lead_source'].unique():
+                for is_repeat in [0, 1]:
+                    # Filter to this segment
+                    segment_df = stage_df[
+                        (stage_df['lead_source'] == lead_source) &
+                        (stage_df['is_repeat_customer'] == is_repeat)
+                    ]
+
+                    if len(segment_df) == 0:
+                        continue
+
+                    # Count completed in this segment
+                    # Use stage-specific completion logic
+                    if stage == 'inquiry':
+                        completed_count = len(segment_df[segment_df['current_stage'] == 'completed'])
+                    elif stage == 'quote_sent':
+                        completed_count = len(segment_df[
+                            (segment_df['current_stage'] == 'completed') &
+                            (segment_df['quote_date'].notna())
+                        ])
+                    elif stage == 'booked':
+                        completed_count = len(segment_df[
+                            (segment_df['current_stage'] == 'completed') &
+                            (segment_df['booking_date'].notna())
+                        ])
+                    elif stage == 'final_payment':
+                        completed_count = len(segment_df[
+                            (segment_df['current_stage'] == 'completed') &
+                            (segment_df['final_payment_date'].notna())
+                        ])
+
+                    total_count = len(segment_df)
+                    segment_key = (stage, lead_source, int(is_repeat))
+
+                    # Store count
+                    segment_counts[segment_key] = total_count
+
+                    # Calculate rate only if we have enough data
+                    if total_count >= min_segment_size:
+                        rate = completed_count / total_count if total_count > 0 else 0.0
+                        segmented_rates[segment_key] = rate
+                        print(f"  {stage} x {lead_source} x repeat={is_repeat}: {rate:.3f} ({completed_count}/{total_count})")
+                    # else: will fall back to flat rate during inference
+
+        print(f"\nCalculated {len(segmented_rates)} segment rates (out of {len(segment_counts)} total segments)")
+        print(f"Segments below threshold ({min_segment_size}) will use flat rates as fallback")
+
+        return {
+            'flat_rates': flat_rates,
+            'segmented_rates': segmented_rates,
+            'segment_counts': segment_counts,
+            'min_segment_size': min_segment_size
+        }
+
     def train_all(self, monthly_revenue: pd.DataFrame, full_data: pd.DataFrame) -> Dict:
         """
         Train all models in the ensemble.
-        
+
         Parameters:
         -----------
         monthly_revenue : pd.DataFrame
             Monthly revenue time series
         full_data : pd.DataFrame
             Full dataset with leads
-            
+
         Returns:
         --------
         dict
@@ -424,7 +589,24 @@ class ModelTrainer:
         print("="*70)
         print("TRAINING ENSEMBLE MODELS")
         print("="*70)
-        
+
+        # Calculate stage conversion rates (flat + segmented)
+        stage_conversion_rates = self.calculate_stage_conversion_rates(full_data)
+
+        # Save stage conversion rates as artifact
+        rates_path = os.path.join(self.model_dir, 'stage_conversion_rates.pkl')
+        with open(rates_path, 'wb') as f:
+            pickle.dump(stage_conversion_rates, f)
+        print(f"\nStage conversion rates saved to {rates_path}")
+
+        # Add to training metadata (store flat rates + summary stats)
+        self.training_metadata['stage_conversion_rates'] = {
+            'flat_rates': stage_conversion_rates['flat_rates'],
+            'num_segments': len(stage_conversion_rates['segmented_rates']),
+            'total_segments': len(stage_conversion_rates['segment_counts']),
+            'min_segment_size': stage_conversion_rates['min_segment_size']
+        }
+
         # Train Prophet
         if PROPHET_AVAILABLE:
             try:
@@ -433,7 +615,7 @@ class ModelTrainer:
                 print(f"Warning: Prophet training failed: {e}")
         else:
             print("Skipping Prophet (not installed)")
-        
+
         # Train XGBoost
         if XGBOOST_AVAILABLE:
             try:
@@ -442,19 +624,19 @@ class ModelTrainer:
                 print(f"Warning: XGBoost training failed: {e}")
         else:
             print("Skipping XGBoost (not installed)")
-        
+
         # Save training metadata
         metadata_path = os.path.join(self.model_dir, 'training_metadata.pkl')
         with open(metadata_path, 'wb') as f:
             pickle.dump(self.training_metadata, f)
-        
+
         print("\n" + "="*70)
         print("TRAINING COMPLETE")
         print("="*70)
-        
+
         # Print summary of training metrics
         self._print_training_summary()
-        
+
         return self.training_metadata
     
     def _print_training_summary(self) -> None:

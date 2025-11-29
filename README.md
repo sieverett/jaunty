@@ -200,6 +200,25 @@ The backend uses models from `model/artifacts/` directory. Ensure models are tra
 - ✅ Mock Data Service for Development
 - ✅ Core Forecasting Models
 - ✅ Strategic Report Generation (Azure OpenAI)
+- ✅ Docker containerization
+- ✅ Azure Container Apps deployment
+
+## Deployment
+
+The application is deployed to Azure Container Apps and available at [https://www.your-domain.com](https://www.your-domain.com).
+
+**Resources:**
+- [Docker Build Guide](docs/DOCKER.md)
+- [Azure Deployment Guide](docs/AZURE_DEPLOYMENT.md)
+- Automated deployment script: `scripts/deploy.sh`
+
+**Azure Resources:**
+- Resource Group: `your-resource-group`
+- Container Registry: `your-registry.azurecr.io`
+- Environment: `jaunty-env`
+- Frontend App: `jaunty-frontend`
+- Backend App: `jaunty-backend`
+- Custom Domain: `www.your-domain.com`
 
 ## License
 

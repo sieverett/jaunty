@@ -15,10 +15,11 @@ interface AppStateData {
   forecastData: ForecastResponse | null;
   errorMessage: string | null;
   isUploading: boolean;
+  uploadedFile: File | null;
 }
 
 type AppStateAction =
-  | { type: 'START_UPLOAD' }
+  | { type: 'START_UPLOAD'; file: File }
   | { type: 'UPLOAD_SUCCESS'; payload: ForecastResponse }
   | { type: 'UPLOAD_ERROR'; payload: string }
   | { type: 'RESET' }
@@ -31,7 +32,8 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         ...state,
         appState: AppState.ANALYZING,
         isUploading: true,
-        errorMessage: null
+        errorMessage: null,
+        uploadedFile: action.file
       };
 
     case 'UPLOAD_SUCCESS':
@@ -57,7 +59,8 @@ function appStateReducer(state: AppStateData, action: AppStateAction): AppStateD
         appState: AppState.UPLOAD,
         forecastData: null,
         errorMessage: null,
-        isUploading: false
+        isUploading: false,
+        uploadedFile: null
       };
 
     case 'LOAD_FORECAST':
@@ -78,7 +81,8 @@ export default function App() {
     appState: AppState.UPLOAD,
     forecastData: null,
     errorMessage: null,
-    isUploading: false
+    isUploading: false,
+    uploadedFile: null
   });
 
   const [user, setUser] = useState<User | null>(null);
@@ -113,7 +117,12 @@ export default function App() {
       return; // Prevent concurrent uploads
     }
 
-    dispatch({ type: 'START_UPLOAD' });
+    if (!file) {
+      dispatch({ type: 'UPLOAD_ERROR', payload: 'No file provided' });
+      return;
+    }
+
+    dispatch({ type: 'START_UPLOAD', file });
 
     try {
       const data = await analyzeTravelData(csvContent, file);
@@ -212,6 +221,7 @@ export default function App() {
               onReset={handleReset}
               onSave={handleSaveForecast}
               user={user}
+              uploadedFile={state.uploadedFile}
             />
           </ErrorBoundary>
         )}

@@ -2,8 +2,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ForecastResponse, SimulationState, User, FunnelData } from '../types';
 import { RevenueChart, FunnelChart, DateRangeSelector } from './Charts';
-import { getFunnelData, getFunnelDateRange } from '../services/dataService';
-import { Sliders, ArrowLeft, Zap, TrendingUp, TrendingDown, DollarSign, Lock, Save, ChevronLeft, ChevronRight, Download, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { getFunnelData, getFunnelDateRange, generateFullReport } from '../services/dataService';
+import { Sliders, ArrowLeft, Zap, TrendingUp, TrendingDown, DollarSign, Lock, Save, ChevronLeft, ChevronRight, Download, AlertCircle, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { exportDashboardToPDF } from '../utils/pdf/pdfExportV2';
 import type { ForecastMetrics } from '../utils/pdf/types';
 
@@ -12,9 +12,10 @@ interface DashboardProps {
   onReset: () => void;
   onSave: (name: string) => void;
   user: User;
+  uploadedFile: File | null;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, user }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, user, uploadedFile }) => {
 
   // Initialize simulation state based on suggested parameters with defensive guards
   const initialSimState: SimulationState = React.useMemo(() => {
@@ -50,6 +51,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   const [funnelDateRange, setFunnelDateRange] = useState<{ minDate: string; maxDate: string } | null>(null);
   const [isFunnelLoading, setIsFunnelLoading] = useState(false);
   const [funnelError, setFunnelError] = useState<string | null>(null);
+
+  // Report-specific state
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Calculate simulated data locally to be instant
   // Sort by date to ensure chronological order and identify any gaps
@@ -227,6 +231,191 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
     }
   }, [funnelDateRange, fetchFunnelData]);
 
+  // Generate and download full report as PDF
+  const handleGenerateAndDownloadReport = useCallback(async () => {
+    if (!uploadedFile) {
+      alert('No file uploaded. Please upload a CSV file first.');
+      return;
+    }
+
+    setIsGeneratingReport(true);
+
+    try {
+      // Fetch report data from API
+      const reportData = await generateFullReport(uploadedFile);
+
+      // Generate PDF from report data
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF();
+
+      let yPos = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - 2 * margin;
+
+      // Helper to add text with word wrap
+      const addWrappedText = (text: string, x: number, y: number, maxWidth: number, fontSize: number = 11, lineHeight: number = 7) => {
+        doc.setFontSize(fontSize);
+        const lines = doc.splitTextToSize(text, maxWidth);
+        doc.text(lines, x, y);
+        return y + (lines.length * lineHeight);
+      };
+
+      // Helper to check if we need a new page
+      const checkNewPage = (requiredSpace: number) => {
+        if (yPos + requiredSpace > pageHeight - 20) {
+          doc.addPage();
+          yPos = 20;
+          return true;
+        }
+        return false;
+      };
+
+      // Title Page
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Strategic Analysis Report', pageWidth / 2, yPos, { align: 'center' });
+      yPos += 15;
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 30;
+
+      // Executive Summary - handle both string and object formats
+      const executiveSummary = typeof reportData.executive_summary === 'string'
+        ? reportData.executive_summary
+        : reportData.executive_summary?.overview || '';
+
+      if (executiveSummary) {
+        checkNewPage(40);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Executive Summary', margin, yPos);
+        yPos += 10;
+
+        doc.setFont('helvetica', 'normal');
+        yPos = addWrappedText(executiveSummary, margin, yPos, maxWidth);
+        yPos += 15;
+      }
+
+      // Driving Factors
+      if (reportData.positive_factors || reportData.negative_factors) {
+        checkNewPage(40);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Key Driving Factors', margin, yPos);
+        yPos += 10;
+
+        // Positive Factors
+        if (reportData.positive_factors && Array.isArray(reportData.positive_factors)) {
+          checkNewPage(30);
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(22, 163, 74); // green-600
+          doc.text('Positive Factors', margin, yPos);
+          yPos += 8;
+
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          reportData.positive_factors.forEach((factor: string) => {
+            checkNewPage(15);
+            yPos = addWrappedText(`+ ${factor}`, margin + 5, yPos, maxWidth - 5);
+            yPos += 3;
+          });
+          yPos += 8;
+        }
+
+        // Negative Factors
+        if (reportData.negative_factors && Array.isArray(reportData.negative_factors)) {
+          checkNewPage(30);
+          doc.setFontSize(14);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(220, 38, 38); // red-600
+          doc.text('Risk Factors', margin, yPos);
+          yPos += 8;
+
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          reportData.negative_factors.forEach((factor: string) => {
+            checkNewPage(15);
+            yPos = addWrappedText(`- ${factor}`, margin + 5, yPos, maxWidth - 5);
+            yPos += 3;
+          });
+          yPos += 8;
+        }
+      }
+
+      // Outliers & Anomalies
+      if (reportData.outliers && Array.isArray(reportData.outliers)) {
+        checkNewPage(40);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text('Outliers & Anomalies', margin, yPos);
+        yPos += 10;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        reportData.outliers.forEach((outlier: string) => {
+          checkNewPage(15);
+          yPos = addWrappedText(`• ${outlier}`, margin + 5, yPos, maxWidth - 5);
+          yPos += 3;
+        });
+        yPos += 15;
+      }
+
+      // Operational Recommendations
+      if (reportData.recommendations && Array.isArray(reportData.recommendations)) {
+        checkNewPage(40);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Operational Recommendations', margin, yPos);
+        yPos += 10;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        reportData.recommendations.forEach((rec: string, idx: number) => {
+          checkNewPage(15);
+          yPos = addWrappedText(`${idx + 1}. ${rec}`, margin + 5, yPos, maxWidth - 5);
+          yPos += 3;
+        });
+        yPos += 15;
+      }
+
+      // Model Performance Assessment
+      if (reportData.model_performance) {
+        checkNewPage(40);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Model Performance Assessment', margin, yPos);
+        yPos += 10;
+
+        doc.setFont('helvetica', 'normal');
+        yPos = addWrappedText(reportData.model_performance, margin, yPos, maxWidth);
+      }
+
+      // Add page numbers
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      }
+
+      doc.save('strategic-analysis-report.pdf');
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate report');
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  }, [uploadedFile]);
+
   // Generate CSV content from table data
   const generateTableCSV = (data: typeof simulatedData): string => {
     const headers = ['Date', 'Revenue', 'Type'];
@@ -317,11 +506,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8">
       {/* Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 space-y-4 md:space-y-0">
         <div className="flex items-center space-x-4">
-          <button 
+          <button
             onClick={onReset}
             className="flex items-center text-slate-500 hover:text-slate-800 transition-colors px-3 py-2 hover:bg-slate-100 rounded-lg"
           >
@@ -346,22 +535,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
               </>
             )}
           </button>
+          {isAdmin && (
+            <button
+              onClick={handleGenerateAndDownloadReport}
+              disabled={isGeneratingReport || !data}
+              className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isGeneratingReport ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Full Report
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center space-x-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-          <button 
+          <button
             onClick={() => setActiveTab('forecast')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'forecast' ? 'bg-brand-100 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
           >
             Forecast & Simulation
           </button>
           <div className="relative group">
-            <button 
+            <button
               onClick={() => isAdmin && setActiveTab('insights')}
               disabled={!isAdmin}
               className={`px-4 py-2 text-sm font-medium rounded-md transition-all flex items-center ${
-                activeTab === 'insights' 
-                  ? 'bg-brand-100 text-brand-700 shadow-sm' 
+                activeTab === 'insights'
+                  ? 'bg-brand-100 text-brand-700 shadow-sm'
                   : 'text-slate-600 hover:bg-slate-50'
               } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -735,6 +943,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
           </div>
         )
       )}
+
     </div>
   );
 };
