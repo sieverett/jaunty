@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+backend/venv
+**/venv
+**/__pycache__
+
+# Build outputs
+dist
+*.pyc
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Env files (add specific ones in compose if needed)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temp files
+tmp
+*.tmp
+
+# Documentation (not needed in container)
+*.md
+docs
+doc
+
+# Model training artifacts
+model/*.pkl
+model/*.joblib

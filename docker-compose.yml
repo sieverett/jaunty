@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: http://backend:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - jaunty-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - jaunty-network
+
+networks:
+  jaunty-network:
+    driver: bridge
