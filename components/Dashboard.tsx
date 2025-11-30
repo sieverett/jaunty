@@ -32,6 +32,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   // Report-specific state
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
+  // Table filtering state
+  const [showHistoricData, setShowHistoricData] = useState(false);
+  const [chartDateRange, setChartDateRange] = useState<{ startDate: string | null; endDate: string | null }>({
+    startDate: null,
+    endDate: null
+  });
+
   // Combine historical and forecast data
   // Sort by date to ensure chronological order and identify any gaps
   const simulatedData = useMemo(() => {
@@ -45,6 +52,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
     return combined;
   }, [data]);
+
+  // Filter table data based on historic toggle and brush date range
+  const filteredTableData = useMemo(() => {
+    let filtered = simulatedData;
+
+    // First apply historic data toggle filter (takes precedence)
+    if (!showHistoricData) {
+      // Only show forecast data
+      filtered = filtered.filter(d => d.type === 'forecast');
+    }
+    // If showHistoricData is true, show all data (no filtering by type)
+
+    // Then apply brush date range filter
+    if (chartDateRange.startDate && chartDateRange.endDate) {
+      const startDate = new Date(chartDateRange.startDate);
+      const endDate = new Date(chartDateRange.endDate);
+
+      filtered = filtered.filter(d => {
+        const itemDate = new Date(d.date);
+        return itemDate >= startDate && itemDate <= endDate;
+      });
+    }
+
+    return filtered;
+  }, [simulatedData, showHistoricData, chartDateRange]);
 
   // Calculate all forecast metrics using useMemo to ensure they update when simulatedData changes
   const forecastMetrics = useMemo(() => {
@@ -190,6 +222,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
       fetchFunnelData(funnelDateRange.minDate, funnelDateRange.maxDate);
     }
   }, [funnelDateRange, fetchFunnelData]);
+
+  // Handle brush changes from RevenueChart
+  const handleChartBrushChange = useCallback((startDate: string | null, endDate: string | null) => {
+    setChartDateRange({ startDate, endDate });
+  }, []);
 
   // Generate and download full report as PDF
   const handleGenerateAndDownloadReport = useCallback(async () => {
@@ -1177,17 +1214,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
               {/* Revenue Chart */}
               <div id="revenue-chart-container">
-                <RevenueChart data={simulatedData} />
+                <RevenueChart data={simulatedData} onBrushChange={handleChartBrushChange} />
               </div>
 
               {/* Data Table */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-slate-900">Revenue Data</h3>
+                  <div className="flex items-center space-x-4">
+                    <h3 className="text-lg font-semibold text-slate-900">Revenue Data</h3>
+                    <div className="flex items-center space-x-2">
+                      <label className="flex items-center space-x-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={showHistoricData}
+                          onChange={(e) => setShowHistoricData(e.target.checked)}
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 focus:ring-offset-0"
+                        />
+                        <span>Show Historic Data</span>
+                      </label>
+                    </div>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => {
-                        const csvContent = generateTableCSV(simulatedData);
+                        const csvContent = generateTableCSV(filteredTableData);
                         downloadCSV(csvContent, 'revenue_data.csv');
                       }}
                       className="flex items-center px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
@@ -1217,17 +1267,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Date</th>
                         <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Revenue</th>
-                        {simulatedData.some(d => d.lower !== undefined && d.upper !== undefined) && (
+                        {filteredTableData.some(d => d.lower !== undefined && d.upper !== undefined) && (
                           <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Confidence Interval</th>
                         )}
                         <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Type</th>
-                        {simulatedData.some(d => d.bookings !== undefined && d.bookings !== null) && (
+                        {filteredTableData.some(d => d.bookings !== undefined && d.bookings !== null) && (
                           <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Bookings</th>
                         )}
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
-                      {simulatedData.map((point, index) => {
+                      {filteredTableData.map((point, index) => {
                         const date = new Date(point.date);
                         const formattedDate = date.toLocaleDateString('en-US', {
                           month: 'short',
@@ -1235,7 +1285,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                         });
                         const isForecast = point.type === 'forecast';
                         const hasConfidenceData = point.lower !== undefined && point.upper !== undefined;
-                        const showConfidenceColumn = simulatedData.some(d => d.lower !== undefined && d.upper !== undefined);
+                        const showConfidenceColumn = filteredTableData.some(d => d.lower !== undefined && d.upper !== undefined);
 
                         // Calculate confidence interval
                         const confidenceInterval = hasConfidenceData
@@ -1283,7 +1333,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                                 {isForecast ? 'Forecast' : 'Historical'}
                               </span>
                             </td>
-                            {simulatedData.some(d => d.bookings !== undefined && d.bookings !== null) && (
+                            {filteredTableData.some(d => d.bookings !== undefined && d.bookings !== null) && (
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-600">
                                 {point.bookings !== undefined && point.bookings !== null
                                   ? point.bookings.toLocaleString()

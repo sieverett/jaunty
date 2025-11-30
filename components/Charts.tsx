@@ -19,6 +19,7 @@ import { DataPoint, FunnelData } from '../types';
 
 interface RevenueChartProps {
   data: DataPoint[];
+  onBrushChange?: (startDate: string | null, endDate: string | null) => void;
 }
 
 interface DateRangeSelectorProps {
@@ -95,7 +96,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
+export const RevenueChart: React.FC<RevenueChartProps> = ({ data, onBrushChange }) => {
   // Use refs to track brush state without causing re-renders during drag
   const brushStartIndexRef = useRef<number>(0);
   const brushEndIndexRef = useRef<number>(Math.max(0, data.length - 1));
@@ -175,18 +176,25 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
       // Update refs immediately (no re-render)
       brushStartIndexRef.current = brushData.startIndex;
       brushEndIndexRef.current = brushData.endIndex;
-      
+
+      // Call the callback with actual dates if provided
+      if (onBrushChange && chartData.length > 0) {
+        const startDate = chartData[brushData.startIndex]?.date || null;
+        const endDate = chartData[brushData.endIndex]?.date || null;
+        onBrushChange(startDate, endDate);
+      }
+
       // Debounce state update to avoid re-renders during active dragging
       // This allows the Brush to move smoothly without interference
       const timeoutId = setTimeout(() => {
         setBrushStartIndex(brushData.startIndex);
         setBrushEndIndex(brushData.endIndex);
       }, 100);
-      
+
       // Store timeout ID to clear if needed (though we'll let it complete)
       return () => clearTimeout(timeoutId);
     }
-  }, []);
+  }, [onBrushChange, chartData]);
 
   // Zoom controls
   const zoomIn = () => {
@@ -197,6 +205,13 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
     const newEnd = Math.min(chartData.length - 1, newStart + newRange);
     setBrushStartIndex(newStart);
     setBrushEndIndex(newEnd);
+
+    // Trigger callback
+    if (onBrushChange && chartData.length > 0) {
+      const startDate = chartData[newStart]?.date || null;
+      const endDate = chartData[newEnd]?.date || null;
+      onBrushChange(startDate, endDate);
+    }
   };
 
   const zoomOut = () => {
@@ -207,11 +222,25 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
     const newEnd = Math.min(chartData.length - 1, newStart + newRange);
     setBrushStartIndex(newStart);
     setBrushEndIndex(newEnd);
+
+    // Trigger callback
+    if (onBrushChange && chartData.length > 0) {
+      const startDate = chartData[newStart]?.date || null;
+      const endDate = chartData[newEnd]?.date || null;
+      onBrushChange(startDate, endDate);
+    }
   };
 
   const resetZoom = () => {
     setBrushStartIndex(0);
     setBrushEndIndex(chartData.length - 1);
+
+    // Trigger callback
+    if (onBrushChange && chartData.length > 0) {
+      const startDate = chartData[0]?.date || null;
+      const endDate = chartData[chartData.length - 1]?.date || null;
+      onBrushChange(startDate, endDate);
+    }
   };
 
   return (
