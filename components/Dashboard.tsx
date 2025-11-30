@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ForecastResponse, User, FunnelData } from '../types';
-import { RevenueChart, FunnelChart, DateRangeSelector } from './Charts';
+import { RevenueChart, FunnelChart } from './Charts';
 import { getFunnelData, getFunnelDateRange, generateFullReport, generateReportFromData } from '../services/dataService';
 import { ArrowLeft, Zap, TrendingUp, TrendingDown, DollarSign, Lock, Save, Download, AlertCircle, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { exportDashboardToPDF } from '../utils/pdf/pdfExportV2';
