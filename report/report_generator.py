@@ -198,55 +198,205 @@ class ReportGenerator:
     
     def prepare_forecast_data(self, forecast: list) -> str:
         """
-        Prepare forecast data summary for the LLM prompt.
-        
+        Prepare forecast data summary for the LLM prompt with comprehensive analysis.
+
         Args:
             forecast: List of forecast dictionaries with date, forecast, lower, upper
-            
+
         Returns:
             Formatted string summary of forecast data
         """
         if not forecast:
             return "No forecast data available."
-        
+
         summary_parts = []
-        summary_parts.append("=== 12-MONTH FORECAST DATA ===")
-        
-        # First 3 months
-        summary_parts.append("First 3 Months:")
-        for month in forecast[:3]:
+        summary_parts.append("=== COMPLETE 12-MONTH FORECAST DATA ===")
+
+        # Calculate average and total
+        forecasts = [m.get("forecast", 0) for m in forecast]
+        total_forecast = sum(forecasts)
+        avg_forecast = total_forecast / len(forecasts) if forecasts else 0
+
+        # Identify peak and trough months
+        max_month = max(forecast, key=lambda x: x.get("forecast", 0))
+        min_month = min(forecast, key=lambda x: x.get("forecast", 0))
+
+        summary_parts.append(f"Total Forecast: ${total_forecast:,.0f}")
+        summary_parts.append(f"Average Monthly: ${avg_forecast:,.0f}")
+        summary_parts.append(f"Peak Month: {max_month.get('date', 'N/A')} - ${max_month.get('forecast', 0):,.0f}")
+        summary_parts.append(f"Trough Month: {min_month.get('date', 'N/A')} - ${min_month.get('forecast', 0):,.0f}")
+        summary_parts.append("")
+
+        # All 12 months with month-over-month changes
+        summary_parts.append("MONTH-BY-MONTH BREAKDOWN:")
+        for i, month in enumerate(forecast):
             date = month.get("date", "N/A")
             fcst = month.get("forecast", 0)
             lower = month.get("lower", 0)
             upper = month.get("upper", 0)
-            summary_parts.append(f"  {date}: ${fcst:,.0f} (${lower:,.0f} - ${upper:,.0f})")
-        
-        # Middle months summary
-        if len(forecast) > 6:
-            mid_start = len(forecast) // 3
-            mid_end = 2 * len(forecast) // 3
-            summary_parts.append(f"\nMiddle Period ({forecast[mid_start].get('date', 'N/A')} to {forecast[mid_end-1].get('date', 'N/A')}):")
-            mid_forecasts = [m.get("forecast", 0) for m in forecast[mid_start:mid_end]]
-            summary_parts.append(f"  Average: ${sum(mid_forecasts) / len(mid_forecasts):,.0f}")
-        
-        # Last 3 months
-        summary_parts.append("\nLast 3 Months:")
-        for month in forecast[-3:]:
-            date = month.get("date", "N/A")
-            fcst = month.get("forecast", 0)
-            lower = month.get("lower", 0)
-            upper = month.get("upper", 0)
-            summary_parts.append(f"  {date}: ${fcst:,.0f} (${lower:,.0f} - ${upper:,.0f})")
-        
+
+            # Calculate month-over-month change
+            if i > 0:
+                prev_fcst = forecast[i-1].get("forecast", 0)
+                mom_change = ((fcst - prev_fcst) / prev_fcst * 100) if prev_fcst > 0 else 0
+                mom_str = f" (MoM: {mom_change:+.1f}%)"
+            else:
+                mom_str = " (Baseline)"
+
+            # Mark above/below average
+            vs_avg = "ABOVE AVG" if fcst > avg_forecast else "BELOW AVG" if fcst < avg_forecast else "AT AVG"
+            deviation_pct = ((fcst - avg_forecast) / avg_forecast * 100) if avg_forecast > 0 else 0
+
+            summary_parts.append(
+                f"  {date}: ${fcst:,.0f} [{vs_avg} {deviation_pct:+.1f}%]{mom_str}"
+            )
+            summary_parts.append(f"    Confidence Range: ${lower:,.0f} - ${upper:,.0f}")
+
+        summary_parts.append("")
+
+        # Quarterly breakdown
+        summary_parts.append("QUARTERLY ANALYSIS:")
+        quarters = [
+            ("Q1", forecast[0:3]),
+            ("Q2", forecast[3:6]),
+            ("Q3", forecast[6:9]),
+            ("Q4", forecast[9:12])
+        ]
+
+        for q_name, q_data in quarters:
+            if q_data:
+                q_total = sum([m.get("forecast", 0) for m in q_data])
+                q_avg = q_total / len(q_data)
+                summary_parts.append(f"  {q_name}: ${q_total:,.0f} total, ${q_avg:,.0f} avg")
+
+        # Quarter-over-quarter growth
+        q1_avg = sum([m.get("forecast", 0) for m in forecast[0:3]]) / 3 if len(forecast) >= 3 else 0
+        q2_avg = sum([m.get("forecast", 0) for m in forecast[3:6]]) / 3 if len(forecast) >= 6 else 0
+        q3_avg = sum([m.get("forecast", 0) for m in forecast[6:9]]) / 3 if len(forecast) >= 9 else 0
+        q4_avg = sum([m.get("forecast", 0) for m in forecast[9:12]]) / 3 if len(forecast) >= 12 else 0
+
+        if q1_avg > 0 and q4_avg > 0:
+            yoy_growth = ((q4_avg - q1_avg) / q1_avg * 100)
+            summary_parts.append(f"\nQ1 to Q4 Growth: {yoy_growth:+.1f}%")
+
+        summary_parts.append("")
+
         # Trend analysis
-        first_quarter_avg = sum([m.get("forecast", 0) for m in forecast[:3]]) / 3
-        last_quarter_avg = sum([m.get("forecast", 0) for m in forecast[-3:]]) / 3
+        first_quarter_avg = sum([m.get("forecast", 0) for m in forecast[:3]]) / 3 if len(forecast) >= 3 else 0
+        last_quarter_avg = sum([m.get("forecast", 0) for m in forecast[-3:]]) / 3 if len(forecast) >= 3 else 0
         trend_pct = ((last_quarter_avg - first_quarter_avg) / first_quarter_avg * 100) if first_quarter_avg > 0 else 0
-        summary_parts.append(f"\nTrend: First Quarter Avg: ${first_quarter_avg:,.0f}, Last Quarter Avg: ${last_quarter_avg:,.0f}")
+
+        trend_direction = "INCREASING" if trend_pct > 5 else "DECREASING" if trend_pct < -5 else "STABLE"
+        summary_parts.append(f"OVERALL TREND: {trend_direction}")
+        summary_parts.append(f"First Quarter Avg: ${first_quarter_avg:,.0f}")
+        summary_parts.append(f"Last Quarter Avg: ${last_quarter_avg:,.0f}")
         summary_parts.append(f"Change: {trend_pct:+.1f}%")
-        
+
+        # Volatility analysis
+        import statistics
+        if len(forecasts) > 1:
+            std_dev = statistics.stdev(forecasts)
+            cv = (std_dev / avg_forecast * 100) if avg_forecast > 0 else 0
+            summary_parts.append(f"\nVolatility (Coefficient of Variation): {cv:.1f}%")
+            volatility_level = "HIGH" if cv > 20 else "MODERATE" if cv > 10 else "LOW"
+            summary_parts.append(f"Volatility Level: {volatility_level}")
+
         return "\n".join(summary_parts)
-    
+
+    def _validate_report_completeness(self, report: Dict[str, Any]) -> list:
+        """
+        Validate that the generated report has complete information in all sections.
+
+        Args:
+            report: The generated report dictionary
+
+        Returns:
+            List of validation warning messages (empty if valid)
+        """
+        warnings = []
+
+        # Validate driving factors
+        driving_factors = report.get("driving_factors", {})
+        positive_factors = driving_factors.get("positive_factors", [])
+        negative_factors = driving_factors.get("negative_factors", [])
+
+        if len(positive_factors) < 3:
+            warnings.append(f"Insufficient positive factors: {len(positive_factors)} (minimum 3 required)")
+
+        for i, factor in enumerate(positive_factors):
+            if not factor.get("factor") or len(factor.get("factor", "")) < 10:
+                warnings.append(f"Positive factor {i+1} has incomplete 'factor' description")
+            if not factor.get("impact") or len(factor.get("impact", "")) < 10:
+                warnings.append(f"Positive factor {i+1} has incomplete 'impact' description")
+            if not factor.get("evidence") or len(factor.get("evidence", "")) < 10:
+                warnings.append(f"Positive factor {i+1} has incomplete 'evidence' description")
+
+        if len(negative_factors) < 2:
+            warnings.append(f"Insufficient negative factors: {len(negative_factors)} (minimum 2 required)")
+
+        for i, factor in enumerate(negative_factors):
+            if not factor.get("factor") or len(factor.get("factor", "")) < 10:
+                warnings.append(f"Negative factor {i+1} has incomplete 'factor' description")
+            if not factor.get("impact") or len(factor.get("impact", "")) < 10:
+                warnings.append(f"Negative factor {i+1} has incomplete 'impact' description")
+            if not factor.get("evidence") or len(factor.get("evidence", "")) < 10:
+                warnings.append(f"Negative factor {i+1} has incomplete 'evidence' description")
+
+        # Validate operational recommendations
+        ops_recs = report.get("operational_recommendations", {})
+        immediate_actions = ops_recs.get("immediate_actions", [])
+        strategic_initiatives = ops_recs.get("strategic_initiatives", [])
+        risk_mitigation = ops_recs.get("risk_mitigation", [])
+        optimization_opps = ops_recs.get("optimization_opportunities", [])
+
+        if len(immediate_actions) < 3:
+            warnings.append(f"Insufficient immediate actions: {len(immediate_actions)} (minimum 3 required)")
+
+        for i, action in enumerate(immediate_actions):
+            if not action.get("action") or len(action.get("action", "")) < 20:
+                warnings.append(f"Immediate action {i+1} has incomplete 'action' description (too short or empty)")
+            if not action.get("rationale") or len(action.get("rationale", "")) < 20:
+                warnings.append(f"Immediate action {i+1} has incomplete 'rationale'")
+            if not action.get("expected_impact") or len(action.get("expected_impact", "")) < 10:
+                warnings.append(f"Immediate action {i+1} has incomplete 'expected_impact'")
+
+        if len(strategic_initiatives) < 2:
+            warnings.append(f"Insufficient strategic initiatives: {len(strategic_initiatives)} (minimum 2 required)")
+
+        for i, initiative in enumerate(strategic_initiatives):
+            if not initiative.get("initiative") or len(initiative.get("initiative", "")) < 20:
+                warnings.append(f"Strategic initiative {i+1} has incomplete 'initiative' description (too short or empty)")
+            if not initiative.get("rationale") or len(initiative.get("rationale", "")) < 20:
+                warnings.append(f"Strategic initiative {i+1} has incomplete 'rationale'")
+            if not initiative.get("expected_impact") or len(initiative.get("expected_impact", "")) < 10:
+                warnings.append(f"Strategic initiative {i+1} has incomplete 'expected_impact'")
+
+        if len(risk_mitigation) < 2:
+            warnings.append(f"Insufficient risk mitigations: {len(risk_mitigation)} (minimum 2 required)")
+
+        for i, risk in enumerate(risk_mitigation):
+            if not risk.get("risk") or len(risk.get("risk", "")) < 20:
+                warnings.append(f"Risk mitigation {i+1} has incomplete 'risk' description (too short or empty)")
+            if not risk.get("mitigation") or len(risk.get("mitigation", "")) < 20:
+                warnings.append(f"Risk mitigation {i+1} has incomplete 'mitigation' description (too short or empty)")
+
+        if len(optimization_opps) < 2:
+            warnings.append(f"Insufficient optimization opportunities: {len(optimization_opps)} (minimum 2 required)")
+
+        for i, opp in enumerate(optimization_opps):
+            if not opp.get("opportunity") or len(opp.get("opportunity", "")) < 20:
+                warnings.append(f"Optimization opportunity {i+1} has incomplete 'opportunity' description (too short or empty)")
+            if not opp.get("description") or len(opp.get("description", "")) < 20:
+                warnings.append(f"Optimization opportunity {i+1} has incomplete 'description'")
+
+        # Validate key insights
+        exec_summary = report.get("executive_summary", {})
+        key_insights = exec_summary.get("key_insights", [])
+        if len(key_insights) < 3:
+            warnings.append(f"Insufficient key insights: {len(key_insights)} (minimum 3 required)")
+
+        return warnings
+
     def generate_report(self, metadata: Dict[str, Any], forecast: list) -> Dict[str, Any]:
         """
         Generate a strategic analysis report from forecast metadata using Azure OpenAI.
@@ -263,105 +413,169 @@ class ReportGenerator:
         forecast_summary = self.prepare_forecast_data(forecast)
         
         # Construct the prompt
-        system_prompt = """You are a strategic business analyst specializing in revenue forecasting and travel industry analytics. 
+        system_prompt = """You are a strategic business analyst specializing in revenue forecasting and travel industry analytics.
 Your task is to analyze revenue forecast data and provide a comprehensive strategic analysis report in JSON format.
 
-Analyze the provided forecast metadata and data to identify:
-1. Key driving factors affecting revenue projections
-2. Outliers and anomalies in the forecast
-3. Operational recommendations based on the data
+CRITICAL REQUIREMENTS:
+1. EVERY field in the JSON structure must be filled with meaningful, specific content
+2. NO empty strings, NO placeholder text, NO generic boilerplate
+3. Each recommendation must include a COMPLETE description of the action/initiative/risk
+4. Use specific numbers, dates, and metrics from the provided data
+5. Provide detailed analysis grounded in the actual data provided
 
-Be specific, data-driven, and actionable in your recommendations."""
+MINIMUM REQUIRED COUNTS:
+- At least 3 positive factors with complete factor/impact/evidence fields
+- At least 2 negative/risk factors with complete factor/impact/evidence fields
+- At least 3 immediate actions with complete action/priority/rationale/expected_impact
+- At least 2 strategic initiatives with complete initiative/timeframe/rationale/expected_impact
+- At least 2 risk mitigations with complete risk/mitigation/priority fields
+- At least 2 optimization opportunities with complete opportunity/description/expected_benefit
+
+Analyze the provided forecast metadata and data to identify:
+1. Key driving factors affecting revenue projections (be specific about what in the data supports each factor)
+2. Outliers and anomalies in the forecast (reference actual months and values)
+3. Operational recommendations based on the data (tie recommendations to specific metrics)
+
+Be specific, data-driven, and actionable in your recommendations. Reference actual values, dates, and trends from the data provided."""
         
+        # Extract historical data summary
+        dataset_stats = metadata.get("dataset_stats", {})
+        revenue_stats = dataset_stats.get("revenue_stats", {})
+        monthly_stats = dataset_stats.get("monthly_revenue_stats", {})
+
+        historical_summary = "=== HISTORICAL PERFORMANCE SUMMARY ===\n"
+        if revenue_stats:
+            total_historical = revenue_stats.get("total_revenue", 0)
+            avg_trip = revenue_stats.get("average_trip_value", 0)
+            historical_summary += f"Total Historical Revenue: ${total_historical:,.0f}\n"
+            historical_summary += f"Average Trip Value: ${avg_trip:,.0f}\n"
+
+        if monthly_stats:
+            avg_monthly_hist = monthly_stats.get("average_monthly", 0)
+            total_months = monthly_stats.get("total_months", 0)
+            historical_summary += f"Historical Average Monthly Revenue: ${avg_monthly_hist:,.0f}\n"
+            historical_summary += f"Historical Period: {total_months} months\n"
+            historical_summary += f"First Month: {monthly_stats.get('first_month', 'N/A')}\n"
+            historical_summary += f"Last Month: {monthly_stats.get('last_month', 'N/A')}\n"
+
+        # Calculate forecast vs historical comparison
+        forecast_vals = [m.get("forecast", 0) for m in forecast]
+        avg_forecast_monthly = sum(forecast_vals) / len(forecast_vals) if forecast_vals else 0
+        if monthly_stats and avg_forecast_monthly > 0:
+            avg_monthly_hist = monthly_stats.get("average_monthly", 0)
+            if avg_monthly_hist > 0:
+                growth_vs_hist = ((avg_forecast_monthly - avg_monthly_hist) / avg_monthly_hist * 100)
+                historical_summary += f"\nForecast vs Historical Comparison:\n"
+                historical_summary += f"  Historical Monthly Avg: ${avg_monthly_hist:,.0f}\n"
+                historical_summary += f"  Forecast Monthly Avg: ${avg_forecast_monthly:,.0f}\n"
+                historical_summary += f"  Growth/Decline: {growth_vs_hist:+.1f}%\n"
+
         user_prompt = f"""Please analyze the following revenue forecast data and metadata, then provide a strategic analysis report in JSON format.
+
+{historical_summary}
 
 {metadata_summary}
 
 {forecast_summary}
 
+REQUIRED ANALYSIS COMPONENTS:
+1. Compare forecast performance to historical averages and trends
+2. Identify all months that significantly deviate from average (above or below)
+3. Explain the quarter-over-quarter growth pattern
+4. Reference specific numerical targets and percentage changes
+5. Include a month-by-month forecast table in your response where appropriate
+6. Analyze volatility levels and their business implications
+
 Provide your analysis as a JSON object with the following structure:
 {{
     "executive_summary": {{
-        "overview": "High-level summary of the forecast and key findings",
-        "total_forecast": "Total forecasted revenue",
-        "forecast_period": "Forecast period range",
-        "key_insights": ["List of 3-5 key insights"]
+        "overview": "High-level summary of the forecast and key findings (2-3 complete sentences referencing specific metrics)",
+        "total_forecast": "Total forecasted revenue (numeric value)",
+        "forecast_period": "Forecast period range (start to end dates)",
+        "key_insights": ["List of 3-5 key insights - each must reference specific data points, months, or metrics"]
     }},
     "driving_factors": {{
         "positive_factors": [
             {{
-                "factor": "Description of positive factor",
-                "impact": "Expected impact on revenue",
-                "evidence": "Supporting data/metrics"
+                "factor": "Complete description of positive factor (not just a title)",
+                "impact": "Specific expected impact on revenue with quantification",
+                "evidence": "Supporting data/metrics from the provided data with actual values"
             }}
+            // MINIMUM 3 items required with complete fields
         ],
         "negative_factors": [
             {{
-                "factor": "Description of negative factor",
-                "impact": "Expected impact on revenue",
-                "evidence": "Supporting data/metrics"
+                "factor": "Complete description of negative/risk factor (not just a title)",
+                "impact": "Specific expected impact on revenue with quantification",
+                "evidence": "Supporting data/metrics from the provided data with actual values"
             }}
+            // MINIMUM 2 items required with complete fields
         ],
-        "seasonal_patterns": "Description of seasonal patterns observed",
-        "trend_analysis": "Analysis of revenue trends (increasing/decreasing/stable)"
+        "seasonal_patterns": "Detailed description of seasonal patterns observed - reference specific months and percentage variations",
+        "trend_analysis": "Comprehensive analysis of revenue trends - include growth rates, direction, and comparison to historical"
     }},
     "outliers_and_anomalies": {{
         "forecast_outliers": [
             {{
-                "period": "Month/date of outlier",
-                "value": "Forecast value",
-                "deviation": "How much it deviates from expected",
-                "potential_causes": ["List of potential causes"]
+                "period": "Specific month/date of outlier",
+                "value": "Forecast value (numeric)",
+                "deviation": "How much it deviates from expected (percentage and absolute)",
+                "potential_causes": ["List of specific potential causes based on the data and business context"]
             }}
+            // Include all significant outliers identified in the month-by-month data
         ],
-        "data_quality_issues": ["Any data quality concerns"],
-        "model_uncertainty": "Assessment of model confidence and uncertainty"
+        "data_quality_issues": ["List any data quality concerns or gaps observed in the dataset"],
+        "model_uncertainty": "Detailed assessment of model confidence and uncertainty - reference confidence intervals and volatility metrics"
     }},
     "operational_recommendations": {{
         "immediate_actions": [
             {{
-                "action": "Specific action to take",
+                "action": "Complete description of specific action to take (full sentence, not a title)",
                 "priority": "High/Medium/Low",
-                "rationale": "Why this action is recommended",
-                "expected_impact": "Expected impact on revenue"
+                "rationale": "Detailed explanation of why this action is recommended based on the data",
+                "expected_impact": "Specific expected impact on revenue or operations with quantification where possible"
             }}
+            // MINIMUM 3 items required with complete action descriptions
         ],
         "strategic_initiatives": [
             {{
-                "initiative": "Strategic initiative description",
+                "initiative": "Complete description of strategic initiative (full explanation, not just a title)",
                 "timeframe": "Short-term/Mid-term/Long-term",
-                "rationale": "Why this initiative is important",
-                "expected_impact": "Expected impact on revenue"
+                "rationale": "Detailed explanation of why this initiative is important based on trends in the data",
+                "expected_impact": "Specific expected impact on revenue with quantification where possible"
             }}
+            // MINIMUM 2 items required with complete initiative descriptions
         ],
         "risk_mitigation": [
             {{
-                "risk": "Identified risk",
-                "mitigation": "How to mitigate the risk",
+                "risk": "Complete description of the identified risk (full explanation of what could go wrong)",
+                "mitigation": "Detailed explanation of how to mitigate the risk (specific actions, not generic)",
                 "priority": "High/Medium/Low"
             }}
+            // MINIMUM 2 items required with complete risk and mitigation descriptions
         ],
         "optimization_opportunities": [
             {{
-                "opportunity": "Optimization opportunity",
-                "description": "Details of the opportunity",
-                "expected_benefit": "Expected benefit"
+                "opportunity": "Complete description of optimization opportunity (full explanation, not a title)",
+                "description": "Detailed explanation of the opportunity and how to capture it",
+                "expected_benefit": "Specific expected benefit with quantification where possible"
             }}
+            // MINIMUM 2 items required with complete descriptions
         ]
     }},
     "model_performance_assessment": {{
-        "overall_confidence": "High/Medium/Low",
-        "model_reliability": "Assessment of model reliability",
-        "recommendations_for_improvement": ["Suggestions for improving model accuracy"]
+        "overall_confidence": "High/Medium/Low with specific reasoning based on metrics",
+        "model_reliability": "Detailed assessment of model reliability referencing MAPE, MAE, RMSE values",
+        "recommendations_for_improvement": ["Specific suggestions for improving model accuracy based on observed patterns"]
     }},
     "generated_at": "ISO timestamp",
-    "analyst_notes": "Additional observations or context"
+    "analyst_notes": "Additional observations or context that provide deeper insight into the forecast"
 }}
 
 Ensure all monetary values are formatted as numbers (not strings), dates are in ISO format, and the JSON is valid and parseable."""
         
         try:
-            # Call Azure OpenAI API
+            # Call Azure OpenAI API with increased token limit
             response = self.client.chat.completions.create(
                 model=self.deployment_name,
                 messages=[
@@ -369,24 +583,32 @@ Ensure all monetary values are formatted as numbers (not strings), dates are in 
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.7,
-                max_tokens=4000,
+                max_tokens=8000,  # Increased from 4000 to allow more comprehensive reports
                 response_format={"type": "json_object"}  # Request JSON response
             )
-            
+
             # Extract the JSON response
             report_json_str = response.choices[0].message.content
-            
+
             # Parse JSON
             report = json.loads(report_json_str)
-            
+
+            # Validate report completeness
+            validation_warnings = self._validate_report_completeness(report)
+            if validation_warnings:
+                print("WARNING: Report validation issues detected:")
+                for warning in validation_warnings:
+                    print(f"  - {warning}")
+
             # Add metadata about report generation
             report["report_metadata"] = {
                 "generated_at": datetime.now().isoformat(),
                 "model_used": self.deployment_name,
                 "api_version": self.api_version,
-                "forecast_parameters": metadata.get("forecast_parameters", {})
+                "forecast_parameters": metadata.get("forecast_parameters", {}),
+                "validation_warnings": validation_warnings if validation_warnings else []
             }
-            
+
             return report
             
         except json.JSONDecodeError as e:

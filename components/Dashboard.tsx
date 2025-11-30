@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ForecastResponse, SimulationState, User, FunnelData } from '../types';
+import { ForecastResponse, User, FunnelData } from '../types';
 import { RevenueChart, FunnelChart, DateRangeSelector } from './Charts';
-import { getFunnelData, getFunnelDateRange, generateFullReport } from '../services/dataService';
-import { Sliders, ArrowLeft, Zap, TrendingUp, TrendingDown, DollarSign, Lock, Save, ChevronLeft, ChevronRight, Download, AlertCircle, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { getFunnelData, getFunnelDateRange, generateFullReport, generateReportFromData } from '../services/dataService';
+import { ArrowLeft, Zap, TrendingUp, TrendingDown, DollarSign, Lock, Save, Download, AlertCircle, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { exportDashboardToPDF } from '../utils/pdf/pdfExportV2';
 import type { ForecastMetrics } from '../utils/pdf/types';
 
@@ -17,31 +17,8 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, user, uploadedFile }) => {
 
-  // Initialize simulation state based on suggested parameters with defensive guards
-  const initialSimState: SimulationState = React.useMemo(() => {
-    const state: SimulationState = {};
-
-    // Defensive guard: ensure data and suggestedParameters exist and are valid
-    if (!data || !Array.isArray(data.suggestedParameters)) {
-      return state;
-    }
-
-    data.suggestedParameters.forEach(p => {
-      // Additional defensive guard for each parameter
-      if (p && typeof p.key === 'string' && typeof p.default === 'number') {
-        state[p.key] = p.default;
-      }
-    });
-
-    return state;
-  }, [data]);
-
-  const [simParams, setSimParams] = useState<SimulationState>(initialSimState);
   const [activeTab, setActiveTab] = useState<'forecast' | 'insights'>('forecast');
   const [isSaving, setIsSaving] = useState(false);
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
   const [isTableMinimized, setIsTableMinimized] = useState(true);
 
   // Funnel-specific state
@@ -55,7 +32,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
   // Report-specific state
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  // Calculate simulated data locally to be instant
+  // Combine historical and forecast data
   // Sort by date to ensure chronological order and identify any gaps
   const simulatedData = useMemo(() => {
     // Defensive guard: ensure data exists and has required arrays
@@ -64,27 +41,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
     }
 
     const combined = [...data.historical, ...data.forecast]
-      .map(point => {
-        let newRevenue = Number(point.revenue);
-
-        if (point.type === 'forecast') {
-          let totalModifier = 1;
-          Object.entries(simParams).forEach(([key, value]) => {
-             totalModifier *= (1 + (Number(value) / 100));
-          });
-          
-          newRevenue = newRevenue * totalModifier;
-        }
-        
-        return {
-          ...point,
-          revenue: newRevenue,
-        };
-      })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+
     return combined;
-  }, [data, simParams]);
+  }, [data]);
 
   // Calculate all forecast metrics using useMemo to ensure they update when simulatedData changes
   const forecastMetrics = useMemo(() => {
@@ -157,7 +117,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
       compare6mo,
       avg12mo,
     };
-  }, [simulatedData, data.historical, data.forecast, simParams]);
+  }, [simulatedData, data.historical, data.forecast]);
 
   // Destructure for easier access
   const {
@@ -233,16 +193,80 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
   // Generate and download full report as PDF
   const handleGenerateAndDownloadReport = useCallback(async () => {
-    if (!uploadedFile) {
-      alert('No file uploaded. Please upload a CSV file first.');
-      return;
-    }
-
     setIsGeneratingReport(true);
 
     try {
+      let reportData;
+
+      if (uploadedFile) {
+        // Use file-based endpoint when file is available
+        reportData = await generateFullReport(uploadedFile);
+      } else if (data && data.forecast && data.forecast.length > 0) {
+        // Use data-based endpoint when loading from saved analysis
+        // Construct minimal metadata from available data
+        const constructedMetadata = {
+          forecast_parameters: {
+            forecast_date: new Date().toISOString().split('T')[0],
+            forecast_periods: data.forecast.length,
+            forecast_start: data.forecast[0]?.date,
+            forecast_end: data.forecast[data.forecast.length - 1]?.date,
+            models_trained: true
+          },
+          other: {
+            forecast_summary: {
+              total_forecast: data.forecast.reduce((sum, d) => sum + d.revenue, 0),
+              average_monthly: data.forecast.reduce((sum, d) => sum + d.revenue, 0) / data.forecast.length,
+            },
+            key_drivers: data.keyDrivers || [],
+            insights: data.insights || []
+          },
+          dataset_stats: (() => {
+            if (!data.historical || data.historical.length === 0) {
+              return { available: false };
+            }
+
+            const revenues = data.historical.map(d => d.revenue);
+            const sortedRevenues = [...revenues].sort((a, b) => a - b);
+            const sum = revenues.reduce((acc, r) => acc + r, 0);
+            const avg = sum / revenues.length;
+            const median = revenues.length % 2 === 0
+              ? (sortedRevenues[revenues.length / 2 - 1] + sortedRevenues[revenues.length / 2]) / 2
+              : sortedRevenues[Math.floor(revenues.length / 2)];
+            const variance = revenues.reduce((acc, r) => acc + Math.pow(r - avg, 2), 0) / revenues.length;
+            const std = Math.sqrt(variance);
+
+            return {
+              available: true,
+              monthly_revenue_stats: {
+                total_months: data.historical.length,
+                average_monthly: avg,
+                median_monthly: median,
+                min_monthly: Math.min(...revenues),
+                max_monthly: Math.max(...revenues),
+                std_monthly: std,
+                first_month: data.historical[0]?.date,
+                last_month: data.historical[data.historical.length - 1]?.date
+              }
+            };
+          })()
+        };
+
+        // Convert forecast array to the format expected by the report generator
+        const forecastForReport = data.forecast.map(d => ({
+          date: d.date,
+          forecast: d.revenue,
+          lower: d.revenue * 0.9,  // Approximate confidence interval
+          upper: d.revenue * 1.1
+        }));
+
+        reportData = await generateReportFromData(constructedMetadata, forecastForReport);
+      } else {
+        alert('Unable to generate report: No data available. Please upload a CSV file or load a saved analysis.');
+        setIsGeneratingReport(false);
+        return;
+      }
+
       // Fetch report data from API
-      const reportData = await generateFullReport(uploadedFile);
 
       // Generate PDF from report data
       const { jsPDF } = await import('jspdf');
@@ -254,8 +278,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
       const margin = 20;
       const maxWidth = pageWidth - 2 * margin;
 
+      // Helper to format currency values
+      const formatCurrency = (val: any) => {
+        const num = typeof val === 'number' ? val : parseFloat(val);
+        if (isNaN(num)) return val;
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(num);
+      };
+
       // Helper to add text with word wrap
-      const addWrappedText = (text: string, x: number, y: number, maxWidth: number, fontSize: number = 11, lineHeight: number = 7) => {
+      const addWrappedText = (text: string, x: number, y: number, maxWidth: number, fontSize: number = 10, lineHeight: number = 5) => {
         doc.setFontSize(fontSize);
         const lines = doc.splitTextToSize(text, maxWidth);
         doc.text(lines, x, y);
@@ -272,130 +303,625 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
         return false;
       };
 
-      // Title Page
-      doc.setFontSize(24);
+      // Title Page with Logo
+      doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
+
+      // Add logo
+      try {
+        const logoImg = new Image();
+        logoImg.src = '/header_logo.png';
+        await new Promise((resolve, reject) => {
+          logoImg.onload = resolve;
+          logoImg.onerror = reject;
+          setTimeout(reject, 3000); // Timeout after 3s
+        });
+
+        // Add logo centered at top
+        const logoWidth = 40;
+        const logoHeight = (logoImg.height * logoWidth) / logoImg.width;
+        doc.addImage(logoImg, 'PNG', (pageWidth - logoWidth) / 2, yPos, logoWidth, logoHeight);
+        yPos += logoHeight + 10;
+      } catch (e) {
+        console.log('Could not load logo:', e);
+      }
+
       doc.text('Strategic Analysis Report', pageWidth / 2, yPos, { align: 'center' });
-      yPos += 15;
+      yPos += 10;
 
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
       doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, yPos, { align: 'center' });
-      yPos += 30;
+      yPos += 20;
 
-      // Executive Summary - handle both string and object formats
-      const executiveSummary = typeof reportData.executive_summary === 'string'
-        ? reportData.executive_summary
-        : reportData.executive_summary?.overview || '';
-
-      if (executiveSummary) {
+      // Executive Summary
+      if (reportData.executive_summary) {
         checkNewPage(40);
-        doc.setFontSize(16);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text('Executive Summary', margin, yPos);
-        yPos += 10;
+        yPos += 6;
 
         doc.setFont('helvetica', 'normal');
-        yPos = addWrappedText(executiveSummary, margin, yPos, maxWidth);
-        yPos += 15;
+
+        // Overview
+        if (reportData.executive_summary.overview) {
+          yPos = addWrappedText(reportData.executive_summary.overview, margin, yPos, maxWidth);
+          yPos += 4;
+        }
+
+        // Total Forecast
+        if (reportData.executive_summary.total_forecast) {
+          doc.setFont('helvetica', 'bold');
+          const totalForecastFormatted = formatCurrency(reportData.executive_summary.total_forecast);
+          yPos = addWrappedText(`Total Forecast: ${totalForecastFormatted}`, margin, yPos, maxWidth);
+          doc.setFont('helvetica', 'normal');
+          yPos += 2;
+        }
+
+        // Forecast Period
+        if (reportData.executive_summary.forecast_period) {
+          const period = reportData.executive_summary.forecast_period;
+          const periodStr = typeof period === 'object' && period !== null
+            ? `${period.start || ''} to ${period.end || ''}`
+            : (period || 'N/A');
+          yPos = addWrappedText(`Period: ${periodStr}`, margin, yPos, maxWidth);
+          yPos += 4;
+        }
+
+        // Key Insights
+        if (reportData.executive_summary.key_insights && Array.isArray(reportData.executive_summary.key_insights) && reportData.executive_summary.key_insights.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Key Insights:', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          reportData.executive_summary.key_insights.forEach((insight: string) => {
+            checkNewPage(15);
+            yPos = addWrappedText(`• ${insight}`, margin + 5, yPos, maxWidth - 5);
+            yPos += 2;
+          });
+        }
+        yPos += 6;
       }
 
       // Driving Factors
-      if (reportData.positive_factors || reportData.negative_factors) {
+      if (reportData.driving_factors) {
         checkNewPage(40);
-        doc.setFontSize(16);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text('Key Driving Factors', margin, yPos);
-        yPos += 10;
+        yPos += 6;
 
         // Positive Factors
-        if (reportData.positive_factors && Array.isArray(reportData.positive_factors)) {
+        if (reportData.driving_factors.positive_factors && Array.isArray(reportData.driving_factors.positive_factors) && reportData.driving_factors.positive_factors.length > 0) {
           checkNewPage(30);
-          doc.setFontSize(14);
+          doc.setFontSize(12);
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(22, 163, 74); // green-600
           doc.text('Positive Factors', margin, yPos);
-          yPos += 8;
+          yPos += 4;
 
-          doc.setFontSize(11);
+          doc.setFontSize(10);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(0, 0, 0);
-          reportData.positive_factors.forEach((factor: string) => {
-            checkNewPage(15);
-            yPos = addWrappedText(`+ ${factor}`, margin + 5, yPos, maxWidth - 5);
-            yPos += 3;
+          reportData.driving_factors.positive_factors.forEach((item: any) => {
+            checkNewPage(25);
+            const factor = typeof item === 'string' ? item : item.factor || '';
+            const impact = typeof item === 'object' && item.impact ? ` (Impact: ${formatCurrency(item.impact)})` : '';
+            const evidence = typeof item === 'object' && item.evidence ? `\n  Evidence: ${item.evidence}` : '';
+
+            yPos = addWrappedText(`+ ${factor}${impact}`, margin + 5, yPos, maxWidth - 5);
+            if (evidence) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(evidence, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+            }
+            yPos += 2;
           });
-          yPos += 8;
+          yPos += 4;
         }
 
         // Negative Factors
-        if (reportData.negative_factors && Array.isArray(reportData.negative_factors)) {
+        if (reportData.driving_factors.negative_factors && Array.isArray(reportData.driving_factors.negative_factors) && reportData.driving_factors.negative_factors.length > 0) {
           checkNewPage(30);
-          doc.setFontSize(14);
+          doc.setFontSize(12);
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(220, 38, 38); // red-600
           doc.text('Risk Factors', margin, yPos);
-          yPos += 8;
+          yPos += 4;
 
-          doc.setFontSize(11);
+          doc.setFontSize(10);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(0, 0, 0);
-          reportData.negative_factors.forEach((factor: string) => {
-            checkNewPage(15);
-            yPos = addWrappedText(`- ${factor}`, margin + 5, yPos, maxWidth - 5);
-            yPos += 3;
+          reportData.driving_factors.negative_factors.forEach((item: any) => {
+            checkNewPage(25);
+            const factor = typeof item === 'string' ? item : item.factor || '';
+            const impact = typeof item === 'object' && item.impact ? ` (Impact: ${formatCurrency(item.impact)})` : '';
+            const evidence = typeof item === 'object' && item.evidence ? `\n  Evidence: ${item.evidence}` : '';
+
+            yPos = addWrappedText(`- ${factor}${impact}`, margin + 5, yPos, maxWidth - 5);
+            if (evidence) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(evidence, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+            }
+            yPos += 2;
           });
-          yPos += 8;
+          yPos += 4;
         }
+
+        // Seasonal Patterns
+        if (reportData.driving_factors.seasonal_patterns) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(0, 0, 0);
+          doc.text('Seasonal Patterns', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          yPos = addWrappedText(reportData.driving_factors.seasonal_patterns, margin + 5, yPos, maxWidth - 5);
+          yPos += 4;
+        }
+
+        // Trend Analysis
+        if (reportData.driving_factors.trend_analysis) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Trend Analysis', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          yPos = addWrappedText(reportData.driving_factors.trend_analysis, margin + 5, yPos, maxWidth - 5);
+          yPos += 4;
+        }
+        yPos += 6;
       }
 
       // Outliers & Anomalies
-      if (reportData.outliers && Array.isArray(reportData.outliers)) {
+      if (reportData.outliers_and_anomalies) {
         checkNewPage(40);
-        doc.setFontSize(16);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('Outliers & Anomalies', margin, yPos);
-        yPos += 10;
+        yPos += 6;
 
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        reportData.outliers.forEach((outlier: string) => {
-          checkNewPage(15);
-          yPos = addWrappedText(`• ${outlier}`, margin + 5, yPos, maxWidth - 5);
-          yPos += 3;
-        });
-        yPos += 15;
+        // Forecast Outliers
+        if (reportData.outliers_and_anomalies.forecast_outliers && Array.isArray(reportData.outliers_and_anomalies.forecast_outliers) && reportData.outliers_and_anomalies.forecast_outliers.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Forecast Outliers', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          reportData.outliers_and_anomalies.forecast_outliers.forEach((outlier: any) => {
+            checkNewPage(30);
+            const period = outlier.period || 'Unknown period';
+            const value = outlier.value || 'N/A';
+            const deviation = outlier.deviation || 'N/A';
+
+            yPos = addWrappedText(`• Period: ${period}`, margin + 5, yPos, maxWidth - 5);
+            yPos = addWrappedText(`  Value: ${value}, Deviation: ${deviation}`, margin + 8, yPos, maxWidth - 8);
+
+            if (outlier.potential_causes && Array.isArray(outlier.potential_causes) && outlier.potential_causes.length > 0) {
+              yPos = addWrappedText(`  Potential Causes: ${outlier.potential_causes.join(', ')}`, margin + 8, yPos, maxWidth - 8);
+            }
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+
+        // Data Quality Issues
+        if (reportData.outliers_and_anomalies.data_quality_issues && Array.isArray(reportData.outliers_and_anomalies.data_quality_issues) && reportData.outliers_and_anomalies.data_quality_issues.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Data Quality Issues', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          reportData.outliers_and_anomalies.data_quality_issues.forEach((issue: string) => {
+            checkNewPage(15);
+            yPos = addWrappedText(`• ${issue}`, margin + 5, yPos, maxWidth - 5);
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+
+        // Model Uncertainty
+        if (reportData.outliers_and_anomalies.model_uncertainty) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Model Uncertainty', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          yPos = addWrappedText(reportData.outliers_and_anomalies.model_uncertainty, margin + 5, yPos, maxWidth - 5);
+          yPos += 4;
+        }
+        yPos += 6;
       }
 
       // Operational Recommendations
-      if (reportData.recommendations && Array.isArray(reportData.recommendations)) {
+      if (reportData.operational_recommendations) {
         checkNewPage(40);
-        doc.setFontSize(16);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text('Operational Recommendations', margin, yPos);
-        yPos += 10;
+        yPos += 6;
 
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        reportData.recommendations.forEach((rec: string, idx: number) => {
-          checkNewPage(15);
-          yPos = addWrappedText(`${idx + 1}. ${rec}`, margin + 5, yPos, maxWidth - 5);
-          yPos += 3;
-        });
-        yPos += 15;
+        // Immediate Actions
+        if (reportData.operational_recommendations.immediate_actions && Array.isArray(reportData.operational_recommendations.immediate_actions) && reportData.operational_recommendations.immediate_actions.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(239, 68, 68); // red-500
+          doc.text('Immediate Actions', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          reportData.operational_recommendations.immediate_actions.forEach((item: any, idx: number) => {
+            checkNewPage(30);
+            const action = typeof item === 'string' ? item : item.action || '';
+            const priority = typeof item === 'object' && item.priority ? ` [${item.priority} Priority]` : '';
+            const rationale = typeof item === 'object' && item.rationale ? `\n  Rationale: ${item.rationale}` : '';
+            const impact = typeof item === 'object' && item.expected_impact ? `\n  Expected Impact: ${formatCurrency(item.expected_impact)}` : '';
+
+            yPos = addWrappedText(`${idx + 1}. ${action}${priority}`, margin + 5, yPos, maxWidth - 5);
+            if (rationale) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(rationale, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+            }
+            if (impact) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(impact, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+            }
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+
+        // Strategic Initiatives
+        if (reportData.operational_recommendations.strategic_initiatives && Array.isArray(reportData.operational_recommendations.strategic_initiatives) && reportData.operational_recommendations.strategic_initiatives.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(59, 130, 246); // blue-500
+          doc.text('Strategic Initiatives', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          reportData.operational_recommendations.strategic_initiatives.forEach((item: any, idx: number) => {
+            checkNewPage(30);
+            const initiative = typeof item === 'string' ? item : item.initiative || '';
+            const timeframe = typeof item === 'object' && item.timeframe ? ` [${item.timeframe}]` : '';
+
+            yPos = addWrappedText(`${idx + 1}. ${initiative}${timeframe}`, margin + 5, yPos, maxWidth - 5);
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+
+        // Risk Mitigation
+        if (reportData.operational_recommendations.risk_mitigation && Array.isArray(reportData.operational_recommendations.risk_mitigation) && reportData.operational_recommendations.risk_mitigation.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(245, 158, 11); // amber-500
+          doc.text('Risk Mitigation', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          reportData.operational_recommendations.risk_mitigation.forEach((item: any, idx: number) => {
+            checkNewPage(30);
+            const risk = typeof item === 'string' ? item : item.risk || '';
+            const mitigation = typeof item === 'object' && item.mitigation ? item.mitigation : '';
+            const priority = typeof item === 'object' && item.priority ? ` [${item.priority} Priority]` : '';
+
+            yPos = addWrappedText(`${idx + 1}. ${risk}${priority}`, margin + 5, yPos, maxWidth - 5);
+            if (mitigation) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(`  Mitigation: ${mitigation}`, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+            }
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+
+        // Optimization Opportunities
+        if (reportData.operational_recommendations.optimization_opportunities && Array.isArray(reportData.operational_recommendations.optimization_opportunities) && reportData.operational_recommendations.optimization_opportunities.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(16, 185, 129); // green-500
+          doc.text('Optimization Opportunities', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          reportData.operational_recommendations.optimization_opportunities.forEach((item: any, idx: number) => {
+            checkNewPage(30);
+            const opportunity = typeof item === 'string' ? item : item.opportunity || '';
+            const description = typeof item === 'object' && item.description ? item.description : '';
+            const benefit = typeof item === 'object' && item.expected_benefit ? item.expected_benefit : '';
+
+            yPos = addWrappedText(`${idx + 1}. ${opportunity}`, margin + 5, yPos, maxWidth - 5);
+            if (description) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(`  ${description}`, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setTextColor(0, 0, 0);
+            }
+            if (benefit) {
+              doc.setFontSize(9);
+              doc.setTextColor(64, 64, 64);
+              yPos = addWrappedText(`  Expected Benefit: ${benefit}`, margin + 8, yPos, maxWidth - 8, 9);
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+            }
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+        yPos += 6;
       }
 
       // Model Performance Assessment
-      if (reportData.model_performance) {
+      if (reportData.model_performance_assessment) {
         checkNewPage(40);
-        doc.setFontSize(16);
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text('Model Performance Assessment', margin, yPos);
+        yPos += 6;
+
+        // Overall Confidence
+        if (reportData.model_performance_assessment.overall_confidence) {
+          checkNewPage(20);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Overall Confidence:', margin, yPos);
+          doc.setFont('helvetica', 'normal');
+          doc.text(reportData.model_performance_assessment.overall_confidence, margin + 42, yPos);
+          yPos += 6;
+        }
+
+        // Model Reliability
+        if (reportData.model_performance_assessment.model_reliability) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Model Reliability', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          yPos = addWrappedText(reportData.model_performance_assessment.model_reliability, margin + 5, yPos, maxWidth - 5);
+          yPos += 4;
+        }
+
+        // Recommendations for Improvement
+        if (reportData.model_performance_assessment.recommendations_for_improvement && Array.isArray(reportData.model_performance_assessment.recommendations_for_improvement) && reportData.model_performance_assessment.recommendations_for_improvement.length > 0) {
+          checkNewPage(30);
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Recommendations for Improvement', margin, yPos);
+          yPos += 4;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          reportData.model_performance_assessment.recommendations_for_improvement.forEach((rec: string) => {
+            checkNewPage(15);
+            yPos = addWrappedText(`• ${rec}`, margin + 5, yPos, maxWidth - 5);
+            yPos += 2;
+          });
+          yPos += 4;
+        }
+      }
+
+      // Analyst Notes
+      if (reportData.analyst_notes) {
+        checkNewPage(40);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Analyst Notes', margin, yPos);
+        yPos += 6;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        yPos = addWrappedText(reportData.analyst_notes, margin, yPos, maxWidth);
+      }
+
+      // Revenue Forecast Chart - using SVG to Canvas approach
+      try {
+        const chartContainer = document.getElementById('revenue-chart-container');
+        console.log('Chart capture - container found:', !!chartContainer);
+
+        if (chartContainer) {
+          // Find the SVG element inside the chart container (Recharts renders to SVG)
+          const svgElement = chartContainer.querySelector('svg.recharts-surface');
+          console.log('Chart capture - SVG element found:', !!svgElement);
+
+          if (svgElement) {
+            // Clone the SVG to avoid modifying the original
+            const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+
+            // Get the SVG dimensions
+            const svgRect = svgElement.getBoundingClientRect();
+            const svgWidth = svgRect.width || 800;
+            const svgHeight = svgRect.height || 400;
+
+            // Set explicit dimensions on the cloned SVG
+            clonedSvg.setAttribute('width', String(svgWidth));
+            clonedSvg.setAttribute('height', String(svgHeight));
+
+            // Add white background to the SVG
+            const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bgRect.setAttribute('width', '100%');
+            bgRect.setAttribute('height', '100%');
+            bgRect.setAttribute('fill', 'white');
+            clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
+
+            // Serialize the SVG to a string
+            const serializer = new XMLSerializer();
+            const svgString = serializer.serializeToString(clonedSvg);
+
+            // Create a Blob from the SVG string
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+
+            // Create an Image and load the SVG
+            const img = new Image();
+
+            // Wait for the image to load
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = (e) => reject(e);
+              img.src = svgUrl;
+            });
+
+            // Create a canvas and draw the image
+            const canvas = document.createElement('canvas');
+            const scale = 2; // Higher resolution
+            canvas.width = svgWidth * scale;
+            canvas.height = svgHeight * scale;
+
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = 'white';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.scale(scale, scale);
+              ctx.drawImage(img, 0, 0, svgWidth, svgHeight);
+            }
+
+            // Clean up the blob URL
+            URL.revokeObjectURL(svgUrl);
+
+            console.log('Chart capture - canvas size:', canvas.width, 'x', canvas.height);
+
+            if (canvas.width > 0 && canvas.height > 0) {
+              const imgData = canvas.toDataURL('image/png');
+              const imgWidth = pageWidth - 2 * margin;
+              const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+              // Add new page for chart
+              doc.addPage();
+              yPos = 20;
+
+              doc.setFontSize(14);
+              doc.setFont('helvetica', 'bold');
+              doc.setTextColor(0, 0, 0);
+              doc.text('Revenue Forecast Chart', margin, yPos);
+              yPos += 15;
+
+              // Add the chart image
+              doc.addImage(imgData, 'PNG', margin, yPos, imgWidth, imgHeight);
+              console.log('Chart capture - successfully added to PDF');
+            } else {
+              console.error('Chart capture - canvas is empty');
+            }
+          } else {
+            console.error('Chart capture - SVG element not found in container');
+          }
+        } else {
+          console.error('Chart capture - revenue-chart-container not found');
+        }
+      } catch (error) {
+        console.error('Failed to capture revenue chart:', error);
+      }
+
+      // Forecast Data Table
+      const forecastData = simulatedData.filter(d => d.type === 'forecast');
+
+      if (forecastData.length > 0) {
+        doc.addPage();
+        yPos = 20;
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 0, 0);
+        doc.text('12-Month Forecast Data', margin, yPos);
+        yPos += 15;
+
+        // Table header
+        const colWidths = {
+          month: 50,
+          revenue: 70,
+          type: 40
+        };
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setFillColor(243, 244, 246); // gray-100
+        doc.rect(margin, yPos, maxWidth, 10, 'F');
+
+        doc.setTextColor(0, 0, 0);
+        doc.text('Month', margin + 5, yPos + 7);
+        doc.text('Revenue', margin + colWidths.month + 40, yPos + 7, { align: 'right' });
+        doc.text('Type', margin + colWidths.month + colWidths.revenue + 20, yPos + 7, { align: 'center' });
         yPos += 10;
 
+        // Table rows
         doc.setFont('helvetica', 'normal');
-        yPos = addWrappedText(reportData.model_performance, margin, yPos, maxWidth);
+        forecastData.forEach((point, index) => {
+          checkNewPage(10);
+
+          // Alternating row colors
+          if (index % 2 === 1) {
+            doc.setFillColor(249, 250, 251); // gray-50
+            doc.rect(margin, yPos, maxWidth, 10, 'F');
+          }
+
+          const date = new Date(point.date);
+          const formattedDate = date.toLocaleDateString('en-US', {
+            month: 'short',
+            year: 'numeric'
+          });
+          const formattedRevenue = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 0
+          }).format(point.revenue);
+
+          doc.setTextColor(0, 0, 0);
+          doc.text(formattedDate, margin + 5, yPos + 7);
+          doc.text(formattedRevenue, margin + colWidths.month + 40, yPos + 7, { align: 'right' });
+          doc.text('Forecast', margin + colWidths.month + colWidths.revenue + 20, yPos + 7, { align: 'center' });
+
+          yPos += 10;
+        });
       }
 
       // Add page numbers
@@ -414,7 +940,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
     } finally {
       setIsGeneratingReport(false);
     }
-  }, [uploadedFile]);
+  }, [uploadedFile, simulatedData, data.metadata, data.forecast]);
 
   // Generate CSV content from table data
   const generateTableCSV = (data: typeof simulatedData): string => {
@@ -470,38 +996,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
     URL.revokeObjectURL(url);
   };
 
-  const handleSaveClick = async () => {
-    setIsSaving(true);
-    setExportError(null);
-
-    try {
-      // Simple prompt for demo; in production use a modal
-      const scenarioName = window.prompt("Enter a name for this forecast scenario:", `Forecast ${new Date().toLocaleDateString()}`);
-
-      if (scenarioName) {
-        // Export to PDF using exportDashboardToPDF
-        setIsExportingPDF(true);
-
-        await exportDashboardToPDF(
-          data,
-          simulatedData,
-          forecastMetrics,
-          user,
-          scenarioName,
-          'JAUNTY'
-        );
-
-        setIsExportingPDF(false);
-
-        // Also call the original save handler if needed
-        onSave(scenarioName);
-      }
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      setExportError(error instanceof Error ? error.message : 'Failed to export PDF. Please try again.');
-      setIsExportingPDF(false);
-    } finally {
-      setIsSaving(false);
+  const handleSaveClick = () => {
+    const scenarioName = window.prompt("Enter a name for this forecast scenario:", `Forecast ${new Date().toLocaleDateString()}`);
+    if (scenarioName) {
+      onSave(scenarioName);
     }
   };
 
@@ -520,20 +1018,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
           <div className="h-6 w-px bg-slate-200"></div>
           <button
             onClick={handleSaveClick}
-            disabled={isSaving || isExportingPDF}
+            disabled={isSaving}
             className="flex items-center text-brand-600 hover:text-brand-700 font-medium px-3 py-2 hover:bg-brand-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isExportingPDF ? (
-              <>
-                <Download className="w-4 h-4 mr-2 animate-pulse" />
-                Exporting PDF...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save Analysis
-              </>
-            )}
+            <Save className="w-4 h-4 mr-2" />
+            Save Progress
           </button>
           {isAdmin && (
             <button
@@ -585,27 +1074,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
         </div>
       </div>
 
-      {/* Error Message */}
-      {exportError && (
-        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
-          <AlertCircle className="w-5 h-5 text-red-600 mr-3 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h4 className="text-sm font-semibold text-red-800 mb-1">Export Failed</h4>
-            <p className="text-sm text-red-700">{exportError}</p>
-            <button
-              onClick={() => setExportError(null)}
-              className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
 
-      {activeTab === 'forecast' ? (
+      <div data-forecast-section className={activeTab === 'forecast' ? '' : 'hidden'}>
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Charts Panel - Takes 5/6 when expanded, full width when minimized */}
-          <div className={`transition-all duration-300 ${isPanelCollapsed ? 'lg:w-full' : 'lg:w-5/6'}`}>
+          {/* Charts Panel - Full width */}
+          <div className="w-full">
             <div id="forecast-overview-panel" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
               <h3 className="text-lg font-semibold text-slate-900 mb-6">Forecast Overview</h3>
               
@@ -786,89 +1259,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
               </div>
             </div>
           </div>
-
-          {/* Scenario Builder Panel */}
-          <div className={`transition-all duration-300 sticky top-24 ${isPanelCollapsed ? 'lg:w-16' : 'lg:w-1/6'}`}>
-            <div className="relative bg-white rounded-xl border border-slate-200 shadow-sm h-full">
-              {/* Collapse Handle - Upper Left */}
-              <button
-                onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                className="absolute -left-4 top-4 bg-white border border-slate-200 rounded-l-lg px-2 py-2 shadow-sm hover:bg-slate-50 hover:border-brand-300 transition-colors z-10 flex items-center justify-center group"
-                aria-label={isPanelCollapsed ? "Expand panel" : "Collapse panel"}
-              >
-                {isPanelCollapsed ? (
-                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-brand-600" />
-                ) : (
-                  <ChevronLeft className="w-4 h-4 text-slate-500 group-hover:text-brand-600" />
-                )}
-              </button>
-
-              {isPanelCollapsed ? (
-                // Minimized state - narrow strip with centered title
-                <div className="p-2 h-full flex flex-col items-center justify-center min-h-[400px]">
-                  <div className="transform -rotate-90 whitespace-nowrap origin-center">
-                    <div className="flex items-center space-x-2">
-                      <Sliders className="w-4 h-4 text-slate-400" />
-                      <span className="text-xs font-bold text-slate-600">Scenario Builder</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // Expanded state - full content
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-slate-900 flex items-center">
-                      <Sliders className="w-5 h-5 mr-2" />
-                      Scenario Builder
-                    </h3>
-                    <button 
-                      onClick={() => setSimParams(initialSimState)}
-                      className="text-xs text-brand-600 hover:text-brand-800 font-medium"
-                    >
-                      Reset
-                    </button>
-                  </div>
-
-                  <div className="space-y-6">
-                    {data.suggestedParameters.map((param) => (
-                      <div key={param.key}>
-                        <div className="flex justify-between mb-1">
-                          <label htmlFor={param.key} className="text-sm font-medium text-slate-700">
-                            {param.name}
-                          </label>
-                          <span className="text-sm font-bold text-brand-600">
-                            {simParams[param.key] > 0 ? '+' : ''}{simParams[param.key]}%
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          id={param.key}
-                          min={param.min}
-                          max={param.max}
-                          step={1}
-                          value={simParams[param.key]}
-                          onChange={(e) => setSimParams({ ...simParams, [param.key]: parseFloat(e.target.value) })}
-                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600"
-                        />
-                        <p className="text-xs text-slate-500 mt-1">{param.description}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-8 bg-brand-50 rounded-lg p-4 border border-brand-100">
-                    <h4 className="text-sm font-bold text-brand-800 mb-2">Simulation Impact</h4>
-                    <p className="text-xs text-brand-700 leading-relaxed">
-                      Adjusting these variables instantly recalculates the 12-month forecast curve shown on the left. Use this to plan for "Best Case" and "Worst Case" scenarios.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
-      ) : (
-        isAdmin && (
-          <div id="insights-section" className="space-y-8">
+      </div>
+      {activeTab === 'insights' && isAdmin && (
+        <div id="insights-section" className="space-y-8">
             {/* Top Row: Key Drivers and Strategic Analysis */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
@@ -940,8 +1334,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                 />
               </div>
             )}
-          </div>
-        )
+        </div>
       )}
 
     </div>

@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict, Literal
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -1531,6 +1531,52 @@ async def generate_report(
         )
     except HTTPException:
         # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Report generation failed: {str(e)}"
+        )
+
+
+@app.post("/report/from-data")
+async def generate_report_from_data(
+    data: dict = Body(..., description="JSON containing metadata and forecast data")
+):
+    """
+    Generate a strategic analysis report from existing metadata and forecast data.
+
+    This endpoint is used when the original CSV file is not available (e.g., loaded from saved analysis).
+    It accepts the metadata and forecast arrays directly instead of re-processing a file.
+    """
+    try:
+        # Extract metadata and forecast from request
+        metadata = data.get("metadata", {})
+        forecast = data.get("forecast", [])
+
+        if not metadata:
+            raise HTTPException(status_code=400, detail="Missing metadata in request")
+
+        if not forecast:
+            raise HTTPException(status_code=400, detail="Missing forecast data in request")
+
+        # Initialize report generator
+        from report.report_generator import ReportGenerator
+
+        try:
+            generator = ReportGenerator()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Report generator configuration error: {str(e)}. Ensure Azure OpenAI environment variables are set."
+            )
+
+        # Generate the report
+        report = generator.generate_report(metadata, forecast)
+
+        return report
+
+    except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(

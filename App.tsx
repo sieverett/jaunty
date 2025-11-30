@@ -9,6 +9,36 @@ import { analyzeTravelData } from './services/dataService';
 import { AppState, ForecastResponse, User, SavedForecast } from './types';
 import { Loader2 } from 'lucide-react';
 
+interface LoadingStage {
+  title: string;
+  description: string;
+}
+
+const LOADING_STAGES: LoadingStage[] = [
+  {
+    title: "Uploading data...",
+    description: "Securely transferring your CSV file to our analysis server"
+  },
+  {
+    title: "Validating CSV format...",
+    description: "Checking data structure and ensuring all required fields are present"
+  },
+  {
+    title: "Training prediction models...",
+    description: "Building Prophet time series and XGBoost models from your historical data"
+  },
+  {
+    title: "Generating 12-month forecast...",
+    description: "Calculating revenue predictions based on seasonal patterns and trends"
+  },
+  {
+    title: "Calculating insights...",
+    description: "Analyzing key drivers, funnel metrics, and performance indicators"
+  }
+];
+
+const STAGE_DURATIONS = [2000, 2000, 11000, 10000, 5000]; // milliseconds for each stage
+
 // App state reducer for atomic updates
 interface AppStateData {
   appState: AppState;
@@ -87,6 +117,7 @@ export default function App() {
 
   const [user, setUser] = useState<User | null>(null);
   const [savedForecasts, setSavedForecasts] = useState<SavedForecast[]>([]);
+  const [loadingStageIndex, setLoadingStageIndex] = useState(0);
 
   // Check for persisted session and data on mount
   useEffect(() => {
@@ -100,6 +131,34 @@ export default function App() {
       setSavedForecasts(JSON.parse(saved));
     }
   }, []);
+
+  // Manage loading stage transitions
+  useEffect(() => {
+    if (state.appState !== AppState.ANALYZING) {
+      setLoadingStageIndex(0);
+      return;
+    }
+
+    // Start at stage 0
+    setLoadingStageIndex(0);
+
+    // Set up timers for each stage transition
+    const timers: NodeJS.Timeout[] = [];
+    let accumulatedTime = 0;
+
+    for (let i = 0; i < STAGE_DURATIONS.length - 1; i++) {
+      accumulatedTime += STAGE_DURATIONS[i];
+      const timer = setTimeout(() => {
+        setLoadingStageIndex(i + 1);
+      }, accumulatedTime);
+      timers.push(timer);
+    }
+
+    // Cleanup timers on unmount or state change
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [state.appState]);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -207,9 +266,11 @@ export default function App() {
         {state.appState === AppState.ANALYZING && (
           <div className="flex flex-col items-center justify-center h-[60vh]">
             <Loader2 className="w-12 h-12 text-brand-600 animate-spin mb-4" />
-            <h2 className="text-xl font-semibold text-slate-900">Analyzing Historical Data</h2>
+            <h2 className="text-xl font-semibold text-slate-900">
+              {LOADING_STAGES[loadingStageIndex].title}
+            </h2>
             <p className="text-slate-500 mt-2 max-w-md text-center">
-              Analyzing seasonal patterns, booking trends, and calculating your 12-month forecast...
+              {LOADING_STAGES[loadingStageIndex].description}
             </p>
           </div>
         )}
