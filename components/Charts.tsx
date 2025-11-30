@@ -37,26 +37,33 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload || !payload.length) return null;
 
   const dataPoint = payload[0].payload as DataPoint;
-  const revenue = payload[0].value as number;
+  // Get revenue directly from the data point, not from payload value (which could be the confidence band array)
+  const revenue = dataPoint.revenue;
   const isForecast = dataPoint.type === 'forecast';
 
   // Calculate period-over-period change if we have previous data
   const prevIndex = payload[0].payload.index;
   const prevRevenue = prevIndex > 0 ? payload[0].payload.prevRevenue : null;
-  const pctChange = prevRevenue ? ((revenue - prevRevenue) / prevRevenue) * 100 : null;
+  const pctChange = prevRevenue && revenue ? ((revenue - prevRevenue) / prevRevenue) * 100 : null;
+
+  // Get confidence interval if available
+  const lower = dataPoint.lower;
+  const upper = dataPoint.upper;
+  const hasConfidence = lower !== undefined && upper !== undefined;
+  const confidenceInterval = hasConfidence ? (upper - lower) / 2 : null;
 
   // Format date
   const date = new Date(label);
-  const formattedDate = date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    year: 'numeric' 
+  const formattedDate = date.toLocaleDateString('en-US', {
+    month: 'short',
+    year: 'numeric'
   });
 
   return (
     <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
       <p className="text-sm font-semibold text-slate-900 mb-2">{formattedDate}</p>
       <div className="flex items-center space-x-2 mb-1">
-        <div 
+        <div
           className={`w-3 h-3 rounded-full ${isForecast ? 'bg-purple-500' : 'bg-sky-500'}`}
         />
         <span className="text-xs font-medium text-slate-600">
@@ -64,12 +71,21 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         </span>
       </div>
       <p className="text-lg font-bold text-slate-900">
-        {new Intl.NumberFormat('en-US', { 
-          style: 'currency', 
-          currency: 'USD', 
-          maximumFractionDigits: 0 
+        {new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          maximumFractionDigits: 0
         }).format(revenue)}
       </p>
+      {hasConfidence && confidenceInterval !== null && (
+        <p className="text-xs text-purple-600 mt-1">
+          ± {new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 0
+          }).format(confidenceInterval)} confidence
+        </p>
+      )}
       {pctChange !== null && (
         <p className={`text-xs mt-1 ${pctChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
           {pctChange >= 0 ? '↑' : '↓'} {Math.abs(pctChange).toFixed(1)}% vs previous period
@@ -101,25 +117,34 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
   // Use a stable reference to prevent unnecessary re-renders
   const chartData = useMemo(() => {
     let lastHistoricalIndex = -1;
-    
+
     return data.map((point, index) => {
       if (point.type === 'historical') {
         lastHistoricalIndex = index;
       }
-      
+
       return {
         ...point,
         revenueHistorical: point.type === 'historical' ? point.revenue : null,
         revenueForecast: point.type === 'forecast' ? point.revenue : null,
+        // Confidence band for forecast points (array format for Area chart)
+        confidenceBand: point.type === 'forecast' && point.lower !== undefined && point.upper !== undefined
+          ? [point.lower, point.upper]
+          : null,
         prevRevenue: index > 0 ? data[index - 1].revenue : null,
         index,
         // Format date for display
-        dateFormatted: new Date(point.date).toLocaleDateString('en-US', { 
-          month: 'short', 
-          year: 'numeric' 
+        dateFormatted: new Date(point.date).toLocaleDateString('en-US', {
+          month: 'short',
+          year: 'numeric'
         }),
       };
     });
+  }, [data]);
+
+  // Check if any forecast data has confidence intervals
+  const hasConfidenceIntervals = useMemo(() => {
+    return data.some(d => d.type === 'forecast' && d.lower !== undefined && d.upper !== undefined);
   }, [data]);
   
   // Filter data based on brush selection - use refs for immediate updates
@@ -226,6 +251,12 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
               <div className="w-3 h-3 rounded-full bg-purple-500" />
               <span className="text-slate-600">Forecast</span>
             </div>
+            {hasConfidenceIntervals && (
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 rounded bg-purple-200 border border-purple-300" />
+                <span className="text-slate-600">Confidence</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -241,6 +272,10 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
             </linearGradient>
             <linearGradient id="colorForecast" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.5}/>
+              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05}/>
+            </linearGradient>
+            <linearGradient id="colorConfidence" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2}/>
               <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05}/>
             </linearGradient>
           </defs>
@@ -278,15 +313,29 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({ data }) => {
             connectNulls={false}
           />
           
+          {/* Confidence Band for Forecast (rendered behind forecast line) */}
+          {hasConfidenceIntervals && (
+            <Area
+              type="monotone"
+              dataKey="confidenceBand"
+              stroke="none"
+              fillOpacity={1}
+              fill="url(#colorConfidence)"
+              name="Confidence Interval"
+              connectNulls={false}
+              legendType="none"
+            />
+          )}
+
           {/* Forecast Area */}
-          <Area 
-            type="monotone" 
-            dataKey="revenueForecast" 
-            stroke="#8b5cf6" 
+          <Area
+            type="monotone"
+            dataKey="revenueForecast"
+            stroke="#8b5cf6"
             strokeWidth={2.5}
             strokeDasharray="5 5"
-            fillOpacity={1} 
-            fill="url(#colorForecast)" 
+            fillOpacity={1}
+            fill="url(#colorForecast)"
             name="Forecast"
             connectNulls={false}
           />
