@@ -4,6 +4,8 @@ export interface DataPoint {
   revenue: number;
   bookings?: number;
   type: 'historical' | 'forecast';
+  lower?: number;
+  upper?: number;
 }
 
 export interface ForecastResponse {

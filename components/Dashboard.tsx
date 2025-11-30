@@ -875,13 +875,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
         doc.text('12-Month Forecast Data', margin, yPos);
         yPos += 15;
 
-        // Table header
-        const colWidths = {
-          month: 50,
-          revenue: 70,
-          type: 40
-        };
+        // Check if confidence intervals are available
+        const hasConfidenceIntervals = forecastData.some(d => d.lower !== undefined && d.upper !== undefined);
 
+        // Table header
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.setFillColor(243, 244, 246); // gray-100
@@ -889,8 +886,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
 
         doc.setTextColor(0, 0, 0);
         doc.text('Month', margin + 5, yPos + 7);
-        doc.text('Revenue', margin + colWidths.month + 40, yPos + 7, { align: 'right' });
-        doc.text('Type', margin + colWidths.month + colWidths.revenue + 20, yPos + 7, { align: 'center' });
+        doc.text('Revenue', margin + 55, yPos + 7, { align: 'right' });
+        if (hasConfidenceIntervals) {
+          doc.text('Confidence', margin + 110, yPos + 7, { align: 'right' });
+        }
+        doc.text('Type', margin + maxWidth - 20, yPos + 7, { align: 'center' });
         yPos += 10;
 
         // Table rows
@@ -915,10 +915,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
             maximumFractionDigits: 0
           }).format(point.revenue);
 
+          // Calculate confidence interval
+          let confidenceText = '-';
+          if (point.lower !== undefined && point.upper !== undefined) {
+            const interval = (point.upper - point.lower) / 2;
+            confidenceText = '± ' + new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+              maximumFractionDigits: 0
+            }).format(interval);
+          }
+
           doc.setTextColor(0, 0, 0);
           doc.text(formattedDate, margin + 5, yPos + 7);
-          doc.text(formattedRevenue, margin + colWidths.month + 40, yPos + 7, { align: 'right' });
-          doc.text('Forecast', margin + colWidths.month + colWidths.revenue + 20, yPos + 7, { align: 'center' });
+          doc.text(formattedRevenue, margin + 55, yPos + 7, { align: 'right' });
+          if (hasConfidenceIntervals) {
+            doc.text(confidenceText, margin + 110, yPos + 7, { align: 'right' });
+          }
+          doc.text('Forecast', margin + maxWidth - 20, yPos + 7, { align: 'center' });
 
           yPos += 10;
         });
@@ -1203,6 +1217,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Date</th>
                         <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Revenue</th>
+                        {simulatedData.some(d => d.lower !== undefined && d.upper !== undefined) && (
+                          <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Confidence Interval</th>
+                        )}
                         <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Type</th>
                         {simulatedData.some(d => d.bookings !== undefined && d.bookings !== null) && (
                           <th className="px-6 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Bookings</th>
@@ -1212,14 +1229,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                     <tbody className="bg-white divide-y divide-slate-200">
                       {simulatedData.map((point, index) => {
                         const date = new Date(point.date);
-                        const formattedDate = date.toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          year: 'numeric' 
+                        const formattedDate = date.toLocaleDateString('en-US', {
+                          month: 'short',
+                          year: 'numeric'
                         });
                         const isForecast = point.type === 'forecast';
-                        
+                        const hasConfidenceData = point.lower !== undefined && point.upper !== undefined;
+                        const showConfidenceColumn = simulatedData.some(d => d.lower !== undefined && d.upper !== undefined);
+
+                        // Calculate confidence interval
+                        const confidenceInterval = hasConfidenceData
+                          ? (point.upper! - point.lower!) / 2
+                          : null;
+
                         return (
-                          <tr 
+                          <tr
                             key={`${point.date}-${index}`}
                             className={`hover:bg-slate-50 transition-colors ${
                               isForecast ? 'bg-purple-50/30' : ''
@@ -1229,24 +1253,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset, onSave, use
                               {formattedDate}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-slate-900">
-                              {new Intl.NumberFormat('en-US', { 
-                                style: 'currency', 
-                                currency: 'USD', 
-                                maximumFractionDigits: 0 
+                              {new Intl.NumberFormat('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                                maximumFractionDigits: 0
                               }).format(point.revenue)}
                             </td>
+                            {showConfidenceColumn && (
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-slate-600">
+                                {confidenceInterval !== null ? (
+                                  <span className="font-medium text-purple-700">
+                                    ± {new Intl.NumberFormat('en-US', {
+                                      style: 'currency',
+                                      currency: 'USD',
+                                      maximumFractionDigits: 0
+                                    }).format(confidenceInterval)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                              </td>
+                            )}
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                isForecast 
-                                  ? 'bg-purple-100 text-purple-700' 
+                                isForecast
+                                  ? 'bg-purple-100 text-purple-700'
                                   : 'bg-sky-100 text-sky-700'
                               }`}>
                                 {isForecast ? 'Forecast' : 'Historical'}
                               </span>
                             </td>
-                            {point.bookings !== undefined && point.bookings !== null && (
+                            {simulatedData.some(d => d.bookings !== undefined && d.bookings !== null) && (
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-slate-600">
-                                {point.bookings.toLocaleString()}
+                                {point.bookings !== undefined && point.bookings !== null
+                                  ? point.bookings.toLocaleString()
+                                  : ''
+                                }
                               </td>
                             )}
                           </tr>

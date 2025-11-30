@@ -752,6 +752,8 @@ class DashboardDataPoint(BaseModel):
     revenue: float
     bookings: Optional[int] = None
     type: Literal['historical', 'forecast']
+    lower: Optional[float] = None
+    upper: Optional[float] = None
 
 
 class DashboardForecastResponse(BaseModel):
@@ -1246,7 +1248,9 @@ async def get_dashboard_forecast(
                     date=row['date'].strftime('%Y-%m-%d'),
                     revenue=float(row['forecast']),
                     bookings=None,  # Forecast doesn't include bookings
-                    type="forecast"
+                    type="forecast",
+                    lower=float(row.get('lower', 0)) if 'lower' in row else None,
+                    upper=float(row.get('upper', 0)) if 'upper' in row else None
                 ))
             
             # Get dataset stats and metrics for insights/key drivers
