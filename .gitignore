@@ -60,3 +60,18 @@ model/artifacts/*.json
 
 # Temporary uploaded files
 tmp/
+
+# Build output
+build/
+.next/
+.cache/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Database files
+*.sqlite3
+*.db
+
+# OS files
+Thumbs.db
