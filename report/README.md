@@ -1,6 +1,6 @@
 # Report Generator
 
-This subproject generates strategic analysis reports from revenue forecasting pipeline metadata using Azure OpenAI.
+This subproject generates strategic analysis reports from revenue forecasting pipeline metadata using Anthropic Claude.
 
 ## Overview
 
@@ -19,17 +19,12 @@ The report generator takes metadata from the forecasting pipeline API and produc
    pip install -r requirements.txt
    ```
 
-2. **Configure Azure OpenAI**:
+2. **Configure Anthropic Claude**:
    
-   Create a `.env` file in the project root (or ensure it exists) with the following variables:
+   Create a `.env` file in the project root (or ensure it exists) with the following variable:
    ```env
-   AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-   AZURE_OPENAI_API_KEY=your-api-key-here
-   AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
-   AZURE_OPENAI_API_VERSION=2024-02-15-preview
+   ANTHROPIC_API_KEY=your-api-key-here
    ```
-   
-   Note: `AZURE_OPENAI_API_VERSION` is optional and defaults to `2024-02-15-preview` if not specified.
 
 ## Usage
 
@@ -217,21 +212,20 @@ python report_generator.py forecast_response.json -o strategic_report.json
 ## Error Handling
 
 The script will raise errors if:
-- Required Azure OpenAI environment variables are missing
+- Required Anthropic Claude environment variables are missing
 - The input JSON file is invalid or missing
-- Azure OpenAI API call fails
+- Anthropic Claude API call fails
 - The LLM response is not valid JSON
 
 ## Requirements
 
 - Python 3.8+
-- Azure OpenAI account with a deployed model
+- Anthropic API key
 - Valid API credentials configured in `.env` file
 
 ## Notes
 
-- The script uses Azure OpenAI's JSON mode to ensure structured output
-- Temperature is set to 0.7 for balanced creativity and consistency
-- Maximum tokens is set to 4000 to accommodate comprehensive reports
+- The script prompts Claude to return structured JSON output
+- Maximum tokens is set to 8000 to accommodate comprehensive reports
 - The report includes metadata about when and how it was generated
 

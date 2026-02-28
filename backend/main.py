@@ -59,14 +59,14 @@ print(f"Model directory should be at: {os.path.join(project_root, 'model')}")
 
 from model.pipeline import EnsemblePipeline
 
-# Import report generator (optional - will fail gracefully if Azure OpenAI not configured)
+# Import report generator (optional - will fail gracefully if Anthropic API not configured)
 try:
     from report.report_generator import ReportGenerator
     REPORT_GENERATOR_AVAILABLE = True
 except (ImportError, ValueError) as e:
     REPORT_GENERATOR_AVAILABLE = False
     print(f"Warning: Report generator not available: {e}")
-    print("  Report endpoint will not be available. Configure Azure OpenAI in .env file.")
+    print("  Report endpoint will not be available. Configure ANTHROPIC_API_KEY in .env file.")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -802,7 +802,7 @@ async def root():
     if REPORT_GENERATOR_AVAILABLE:
         endpoints["report"] = "/report"
     else:
-        endpoints["report"] = "/report (not available - Azure OpenAI not configured)"
+        endpoints["report"] = "/report (not available - Anthropic API not configured)"
     
     # Generate HTML page
     endpoints_html = "\n".join([
@@ -942,7 +942,7 @@ async def root_api():
     if REPORT_GENERATOR_AVAILABLE:
         endpoints["report"] = "/report"
     else:
-        endpoints["report"] = "/report (not available - Azure OpenAI not configured)"
+        endpoints["report"] = "/report (not available - Anthropic API not configured)"
     
     return {
         "message": "Revenue Forecasting API",
@@ -1379,7 +1379,7 @@ async def generate_report(
     """
     Generate a strategic analysis report from historical booking data.
     
-    This endpoint generates a 12-month revenue forecast and then uses Azure OpenAI
+    This endpoint generates a 12-month revenue forecast and then uses Anthropic Claude
     to create a comprehensive strategic analysis report with insights, recommendations,
     and operational guidance.
     
@@ -1411,7 +1411,7 @@ async def generate_report(
     if not REPORT_GENERATOR_AVAILABLE:
         raise HTTPException(
             status_code=503,
-            detail="Report generator not available. Please configure Azure OpenAI credentials in .env file (AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT_NAME)."
+            detail="Report generator not available. Please configure Anthropic credentials in .env file (ANTHROPIC_API_KEY)."
         )
     
     if pipeline is None:
@@ -1572,7 +1572,7 @@ async def generate_report_from_data(
         except ValueError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Report generator configuration error: {str(e)}. Ensure Azure OpenAI environment variables are set."
+                detail=f"Report generator configuration error: {str(e)}. Ensure ANTHROPIC_API_KEY environment variable is set."
             )
 
         # Generate the report

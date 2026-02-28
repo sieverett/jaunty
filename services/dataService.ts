@@ -3,7 +3,7 @@
  * 
  * This service provides a single interface that can switch between:
  * - Real API calls (primary)
- * - Gemini AI (fallback if API not available)
+ * - Anthropic Claude (fallback if API not available)
  * 
  * Usage:
  * - Set VITE_API_URL for backend API mode (defaults to http://localhost:8000)

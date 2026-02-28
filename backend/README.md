@@ -12,7 +12,7 @@ FastAPI backend service (v1.0.0) for generating 12-month revenue forecasts from 
 - **Model Training**: Optional endpoint to train models from data
 - **12-Month Forecasts**: Returns monthly revenue predictions with confidence intervals
 - **Dashboard Endpoint**: Returns data formatted for frontend consumption (`/dashboard/forecast`) - **NEW**
-- **Strategic Reports**: Generate comprehensive analysis reports using Azure OpenAI
+- **Strategic Reports**: Generate comprehensive analysis reports using Anthropic Claude
 - **Health Checks**: Endpoint to verify service status and model availability
 
 ## Installation
@@ -31,11 +31,9 @@ pip install -r requirements.txt
 # Note: The backend uses models from ../model/artifacts/ (within jaunty/ repo)
 # Ensure models are trained before generating forecasts
 
-# Optional: Configure Azure OpenAI for /report endpoint
+# Optional: Configure Anthropic Claude for /report endpoint
 # Create a .env file in the project root with:
-# AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-# AZURE_OPENAI_API_KEY=your-api-key
-# AZURE_OPENAI_DEPLOYMENT_NAME=your-deployment-name
+# ANTHROPIC_API_KEY=your-api-key
 ```
 
 ## Running the Service
@@ -341,14 +339,12 @@ POST /report
 
 Generates a comprehensive strategic analysis report from historical booking data. This endpoint:
 1. Generates a 12-month revenue forecast
-2. Uses Azure OpenAI to analyze the forecast and metadata
+2. Uses Anthropic Claude to analyze the forecast and metadata
 3. Returns a strategic report with insights, recommendations, and operational guidance
 
 **Requirements:**
-- Azure OpenAI must be configured in `.env` file:
-  - `AZURE_OPENAI_ENDPOINT`
-  - `AZURE_OPENAI_API_KEY`
-  - `AZURE_OPENAI_DEPLOYMENT_NAME`
+- Anthropic Claude must be configured in `.env` file:
+  - `ANTHROPIC_API_KEY`
 
 **Request:**
 - **file** (multipart/form-data): CSV file with historical booking data
@@ -405,7 +401,7 @@ curl -X POST "http://localhost:8000/report" \
 }
 ```
 
-**Note:** If Azure OpenAI is not configured, this endpoint will return a 503 error.
+**Note:** If Anthropic Claude is not configured, this endpoint will return a 503 error.
 
 ## Data Format
 

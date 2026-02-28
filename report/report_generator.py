@@ -2,7 +2,7 @@
 Report Generator for Revenue Forecasting Pipeline
 
 This script takes metadata from the forecasting pipeline and generates
-a strategic analysis report using Azure OpenAI.
+a strategic analysis report using Anthropic Claude.
 """
 
 import os
@@ -11,35 +11,29 @@ import sys
 from typing import Dict, Any, Optional
 from datetime import datetime
 from dotenv import load_dotenv
-from openai import AzureOpenAI
+from anthropic import Anthropic
 
 # Load environment variables from .env file
 load_dotenv()
 
 
 class ReportGenerator:
-    """Generates strategic analysis reports from forecast metadata using Azure OpenAI."""
-    
+    """Generates strategic analysis reports from forecast metadata using Anthropic Claude."""
+
     def __init__(self):
-        """Initialize the report generator with Azure OpenAI client."""
-        # Azure OpenAI configuration from environment variables
-        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        self.api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-        self.deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-        
-        if not all([self.endpoint, self.api_key, self.deployment_name]):
+        """Initialize the report generator with Anthropic client."""
+        # Anthropic configuration from environment variables
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.model_name = "claude-sonnet-4-20250514"
+
+        if not self.api_key:
             raise ValueError(
-                "Missing required Azure OpenAI environment variables. "
-                "Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT_NAME in .env file"
+                "Missing required Anthropic environment variable. "
+                "Please set ANTHROPIC_API_KEY in .env file"
             )
-        
-        # Initialize Azure OpenAI client
-        self.client = AzureOpenAI(
-            azure_endpoint=self.endpoint,
-            api_key=self.api_key,
-            api_version=self.api_version
-        )
+
+        # Initialize Anthropic client
+        self.client = Anthropic(api_key=self.api_key)
     
     def prepare_metadata_summary(self, metadata: Dict[str, Any]) -> str:
         """
@@ -399,7 +393,7 @@ class ReportGenerator:
 
     def generate_report(self, metadata: Dict[str, Any], forecast: list) -> Dict[str, Any]:
         """
-        Generate a strategic analysis report from forecast metadata using Azure OpenAI.
+        Generate a strategic analysis report from forecast metadata using Anthropic Claude.
         
         Args:
             metadata: The metadata dictionary from the forecast API response
@@ -575,20 +569,18 @@ Provide your analysis as a JSON object with the following structure:
 Ensure all monetary values are formatted as numbers (not strings), dates are in ISO format, and the JSON is valid and parseable."""
         
         try:
-            # Call Azure OpenAI API with increased token limit
-            response = self.client.chat.completions.create(
-                model=self.deployment_name,
+            # Call Anthropic Claude API with increased token limit
+            response = self.client.messages.create(
+                model=self.model_name,
+                max_tokens=8000,
+                system=system_prompt,
                 messages=[
-                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.7,
-                max_tokens=8000,  # Increased from 4000 to allow more comprehensive reports
-                response_format={"type": "json_object"}  # Request JSON response
             )
 
             # Extract the JSON response
-            report_json_str = response.choices[0].message.content
+            report_json_str = response.content[0].text
 
             # Parse JSON
             report = json.loads(report_json_str)
@@ -603,8 +595,7 @@ Ensure all monetary values are formatted as numbers (not strings), dates are in 
             # Add metadata about report generation
             report["report_metadata"] = {
                 "generated_at": datetime.now().isoformat(),
-                "model_used": self.deployment_name,
-                "api_version": self.api_version,
+                "model_used": self.model_name,
                 "forecast_parameters": metadata.get("forecast_parameters", {}),
                 "validation_warnings": validation_warnings if validation_warnings else []
             }
@@ -614,7 +605,7 @@ Ensure all monetary values are formatted as numbers (not strings), dates are in 
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse JSON response from LLM: {e}")
         except Exception as e:
-            raise RuntimeError(f"Error generating report from Azure OpenAI: {e}")
+            raise RuntimeError(f"Error generating report from Anthropic Claude: {e}")
 
 
 def main():

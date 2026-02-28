@@ -17,11 +17,7 @@ services:
       # Update with your Netlify frontend URL
       - key: ALLOWED_ORIGINS
         value: https://your-netlify-app.netlify.app,http://localhost:3006
-      # Add your Azure OpenAI credentials here if using /report endpoint
-      # - key: AZURE_OPENAI_ENDPOINT
-      #   value: your-endpoint
-      # - key: AZURE_OPENAI_API_KEY
+      # Add your Anthropic credentials here if using /report endpoint
+      # - key: ANTHROPIC_API_KEY
       #   value: your-api-key
-      # - key: AZURE_OPENAI_DEPLOYMENT_NAME
-      #   value: your-deployment-name
 

@@ -9,6 +9,7 @@
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Anthropic](https://img.shields.io/badge/Anthropic-Claude-191919?style=for-the-badge&logo=anthropic&logoColor=white)
 
 ---
 
@@ -21,7 +22,7 @@ Jaunty is a full-stack application that generates 12-month revenue forecasts fro
 - **Ensemble forecasting pipeline** -- Prophet, XGBoost, and scikit-learn models trained on uploaded CSV data
 - **Interactive dashboard** -- Revenue charts with confidence intervals, brush-based date range selection, and scenario simulation
 - **Pipeline funnel visualization** -- Tracks leads from inquiry through booking to final payment with empirical conversion rates
-- **AI-powered insights** -- Strategic analysis via Google Gemini (frontend) or Azure OpenAI (backend report endpoint)
+- **AI-powered insights** -- Strategic analysis via Anthropic Claude (frontend and backend report endpoint)
 - **PDF report export** -- Export forecasts and charts as styled PDF documents with SVG extraction
 - **File upload and management** -- Upload CSVs through the UI or API; automatic temp file cleanup
 - **Docker deployment** -- Compose configuration for frontend (Nginx) and backend containers
@@ -32,9 +33,9 @@ Jaunty is a full-stack application that generates 12-month revenue forecasts fro
 jaunty/
   backend/         FastAPI service (upload, train, forecast, report endpoints)
   model/           Ensemble forecasting pipeline (Prophet + XGBoost + Pipeline)
-  report/          Strategic report generator (Azure OpenAI)
+  report/          Strategic report generator (Anthropic Claude)
   components/      React components (Dashboard, Charts, FileUpload, Auth)
-  services/        Frontend data service and Gemini integration
+  services/        Frontend data service and Anthropic Claude integration
   utils/           PDF export utilities (SVG extraction, HTML rendering)
   data/            CSV templates and test data
   docs/            Deployment guides (Azure, Docker)
