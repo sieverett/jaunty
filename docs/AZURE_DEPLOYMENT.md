@@ -187,11 +187,11 @@ Container Apps will pull the new images and restart automatically.
 
 ## Custom Domain Setup
 
-The frontend uses a custom domain (www.your-domain.com) configured through GoDaddy DNS.
+The frontend can use a custom domain configured through your DNS provider.
 
 ### DNS Configuration
 
-In GoDaddy, add a CNAME record:
+In your DNS provider, add a CNAME record:
 
 - Type: `CNAME`
 - Name: `www`

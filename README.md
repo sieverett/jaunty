@@ -205,20 +205,19 @@ The backend uses models from `model/artifacts/` directory. Ensure models are tra
 
 ## Deployment
 
-The application is deployed to Azure Container Apps and available at [https://www.your-domain.com](https://www.your-domain.com).
+The application can be deployed to Azure Container Apps.
 
 **Resources:**
 - [Docker Build Guide](docs/DOCKER.md)
 - [Azure Deployment Guide](docs/AZURE_DEPLOYMENT.md)
 - Automated deployment script: `scripts/deploy.sh`
 
-**Azure Resources:**
+**Azure Resources (configure your own):**
 - Resource Group: `your-resource-group`
 - Container Registry: `your-registry.azurecr.io`
-- Environment: `jaunty-env`
+- Environment: `your-env`
 - Frontend App: `jaunty-frontend`
 - Backend App: `jaunty-backend`
-- Custom Domain: `www.your-domain.com`
 
 ## License
 

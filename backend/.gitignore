@@ -28,6 +28,10 @@ logs/
 *.tmp
 *.temp
 
+# Environment variables
+.env
+.env.*
+
 # Uploaded files directory
 tmp/
 
